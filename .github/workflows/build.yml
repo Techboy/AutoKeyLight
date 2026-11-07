@@ -30,11 +30,40 @@ jobs:
           cache: false
       - name: Test and build
         run: dotnet test AutoKeyLight.sln -c Release
-      - name: Publish Windows app
+      - name: Publish Windows app and per-user installer
         shell: pwsh
         run: |
           $out = Join-Path $env:RUNNER_TEMP "autokeylight-publish"
           dotnet publish AutoKeyLight/AutoKeyLight.csproj -c Release -r win-x64 --self-contained true -p:Version=1.0.0 -p:DebugType=none -p:DebugSymbols=false -o $out
+          Copy-Item LICENSE (Join-Path $out "LICENSE")
+          Copy-Item README.md (Join-Path $out "README.md")
           if (!(Test-Path (Join-Path $out "AutoKeyLight.exe"))) { throw "AutoKeyLight.exe was not published." }
           $env:AUTOKEYLIGHT_PUBLISH_DIR = $out
           dotnet test AutoKeyLight.Core.Tests/AutoKeyLight.Core.Tests.csproj -c Release --filter PublishedOutputMatchesPackageRules
+          $innoSetup = Join-Path $env:RUNNER_TEMP "innosetup-6.4.3.exe"
+          $innoDir = Join-Path $env:RUNNER_TEMP "innosetup"
+          Invoke-WebRequest -Uri "https://github.com/jrsoftware/issrc/releases/download/is-6_4_3/innosetup-6.4.3.exe" -OutFile $innoSetup
+          Start-Process -FilePath $innoSetup -ArgumentList "/VERYSILENT","/SUPPRESSMSGBOXES","/NORESTART","/DIR=$innoDir" -Wait
+          & (Join-Path $innoDir "ISCC.exe") "/DMyAppVersion=1.0.0" "/DPublishDir=$out" "installer\AutoKeyLight.iss"
+          $setup = Join-Path (Resolve-Path "installer") "AutoKeyLight-Setup.exe"
+          if (!(Test-Path $setup)) { throw "The per-user installer was not created." }
+          $dest = Join-Path $env:LOCALAPPDATA "Programs\AutoKeyLight"
+          $uninstaller = Join-Path $dest "unins000.exe"
+          if (Test-Path $uninstaller) { Start-Process -FilePath $uninstaller -ArgumentList "/VERYSILENT","/NORESTART" -Wait }
+          Start-Process -FilePath $setup -ArgumentList "/VERYSILENT","/SUPPRESSMSGBOXES","/NORESTART" -Wait
+          if (!(Test-Path (Join-Path $dest "AutoKeyLight.exe"))) { throw "The installer did not place AutoKeyLight.exe in LocalAppData." }
+          $shortcut = Join-Path $env:APPDATA "Microsoft\Windows\Start Menu\Programs\Auto Key Light.lnk"
+          if (!(Test-Path $shortcut)) { throw "The Start menu shortcut is missing." }
+          $entry = Get-ChildItem "HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall" | ForEach-Object { Get-ItemProperty $_.PSPath } | Where-Object { $_.DisplayName -eq "Auto Key Light" }
+          if (-not $entry) { throw "The per-user uninstall entry is missing." }
+          $run = Get-ItemProperty "HKCU:\Software\Microsoft\Windows\CurrentVersion\Run" -ErrorAction SilentlyContinue
+          if ($run -and $run.AutoKeyLight) { throw "The installer turned on sign-in startup by itself." }
+          $settingsDir = Join-Path $env:LOCALAPPDATA "AutoKeyLight"
+          New-Item -ItemType Directory -Force -Path $settingsDir | Out-Null
+          $marker = Join-Path $settingsDir "user-settings.json"
+          Set-Content -Path $marker -Value "{}" -Encoding ascii
+          Start-Process -FilePath $uninstaller -ArgumentList "/VERYSILENT","/NORESTART" -Wait
+          $deadline = (Get-Date).AddSeconds(30)
+          while ((Test-Path (Join-Path $dest "AutoKeyLight.exe")) -and (Get-Date) -lt $deadline) { Start-Sleep -Seconds 1 }
+          if (Test-Path (Join-Path $dest "AutoKeyLight.exe")) { throw "Uninstall left the program in place." }
+          if (!(Test-Path $marker)) { throw "Uninstall removed user settings." }

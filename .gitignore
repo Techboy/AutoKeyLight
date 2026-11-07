@@ -351,3 +351,6 @@ MigrationBackup/
 
 # Visual Studio Code
 .vscode/
+
+# Inno Setup compiler output
+installer/*.exe

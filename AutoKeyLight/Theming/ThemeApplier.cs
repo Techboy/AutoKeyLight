@@ -61,6 +61,11 @@ namespace AutoKeyLight
         public override Color ImageMarginGradientEnd => palette.MenuBackground.ToColor();
         public override Color SeparatorDark => palette.Border.ToColor();
         public override Color SeparatorLight => palette.MenuBackground.ToColor();
+        public override Color MenuStripGradientBegin => palette.Background.ToColor();
+        public override Color MenuStripGradientEnd => palette.Background.ToColor();
+        public override Color ToolStripGradientBegin => palette.Background.ToColor();
+        public override Color ToolStripGradientMiddle => palette.Background.ToColor();
+        public override Color ToolStripGradientEnd => palette.Background.ToColor();
         public override Color CheckBackground => palette.MenuHighlight.ToColor();
         public override Color CheckSelectedBackground => palette.MenuHighlight.ToColor();
         public override Color CheckPressedBackground => palette.MenuHighlight.ToColor();
