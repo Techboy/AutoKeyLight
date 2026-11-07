@@ -7,12 +7,18 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <StartupObject>AutoKeyLight.Program</StartupObject>
     <ApplicationIcon>Resources\Icon.ico</ApplicationIcon>
+    <Version>1.0.0</Version>
+    <IncludeSourceRevisionInInformationalVersion>false</IncludeSourceRevisionInInformationalVersion>
+    <SatelliteResourceLanguages>en</SatelliteResourceLanguages>
     <Company>$(AssemblyName)</Company>
     <PackageIcon>TrayIconUnlit.png</PackageIcon>
     <Authors>Gabriel Garcia</Authors>
   </PropertyGroup>
   <ItemGroup>
     <Content Include="Resources\Icon.ico" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\AutoKeyLight.Core\AutoKeyLight.Core.csproj" />
   </ItemGroup>
   <ItemGroup>
     <Compile Update="Properties\Resources.Designer.cs">

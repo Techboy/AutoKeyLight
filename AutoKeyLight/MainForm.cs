@@ -1,350 +1,579 @@
-using Microsoft.Win32;
 using System.Collections.Specialized;
 using System.Text;
-using System.Text.Json.Nodes;
-using System.Xml;
-using static System.Windows.Forms.AxHost;
+using AutoKeyLight.Core;
+using Microsoft.Win32;
 
 namespace AutoKeyLight
 {
     public partial class MainForm : Form
     {
+        private const int WmHotkey = 0x0312;
+        private const string WebcamRegistryKey = @"Software\Microsoft\Windows\CurrentVersion\CapabilityAccessManager\ConsentStore\webcam";
+
         private readonly HttpClient httpClient = new HttpClient();
-        const string webcamRegistryKey = @"Software\Microsoft\Windows\CurrentVersion\CapabilityAccessManager\ConsentStore\webcam";
-        RegistryKey? startWithWindowsRegistry = Registry.CurrentUser.OpenSubKey("SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Run", true);
-        bool areLightsOn = false;
-        bool isCameraOn = false;
-        CancellationTokenSource requestStateTokenSource;
-        CancellationToken requestStateToken;
-        Icon TrayIconUnlit;
-        Icon TrayIconLit;
-        DateTime cameraOnTime = DateTime.UtcNow;
-        DateTime cameraOffTime = DateTime.UtcNow;
-        decimal cameraOnDelay = Decimal.Zero;
-        decimal cameraOffDelay = Decimal.Zero;
-        DateTime lastAPICall = DateTime.UtcNow;
-        CameraActivityMonitor? cameraActivityMonitor = CameraActivityMonitor.TryCreate();
+        private readonly RegistryKey? startWithWindowsRegistry = Registry.CurrentUser.OpenSubKey(@"SOFTWARE\Microsoft\Windows\CurrentVersion\Run", true);
+        private readonly Icon trayIconLit;
+        private readonly Icon trayIconUnlit;
+        private readonly LightModeController controller = new LightModeController(DateTime.UtcNow);
+        private readonly LightStatusBoard board = new LightStatusBoard();
+        private readonly Dictionary<string, CancellationTokenSource> lightCalls = new Dictionary<string, CancellationTokenSource>(StringComparer.OrdinalIgnoreCase);
+        private readonly HotkeyBook hotkeys = new HotkeyBook();
+        private readonly Win32HotkeyRegistrar registrar;
+        private readonly bool startInBackground;
+        private readonly System.Windows.Forms.Timer updateTimer;
+        private CameraActivityMonitor? cameraActivityMonitor = CameraActivityMonitor.TryCreate();
+        private UpdateCoordinator updateCoordinator = null!;
+        private decimal cameraOnDelay;
+        private decimal cameraOffDelay;
+        private bool settingsReady;
+        private bool applyingMode;
+        private bool capturingShortcut;
+        private bool hotkeysBound;
+        private bool updateProblem;
+        private ThemePalette? palette;
+        private EffectiveTheme effectiveTheme = EffectiveTheme.Light;
 
-        public MainForm()
+        public MainForm(string[]? args = null)
         {
+            startInBackground = args != null && args.Contains("--background");
+            registrar = new Win32HotkeyRegistrar(() => IsHandleCreated ? Handle : IntPtr.Zero);
             InitializeComponent();
-            requestStateTokenSource = new CancellationTokenSource();
-            requestStateToken = requestStateTokenSource.Token;
-
-            TrayIconLit = Icon.FromHandle(Properties.Resources.TrayIconLit.GetHicon());
-            TrayIconUnlit = Icon.FromHandle(Properties.Resources.TrayIconUnlit.GetHicon());
+            trayIconLit = Icon.FromHandle(Properties.Resources.TrayIconLit.GetHicon());
+            trayIconUnlit = Icon.FromHandle(Properties.Resources.TrayIconUnlit.GetHicon());
+            updateTimer = new System.Windows.Forms.Timer(components);
+            updateTimer.Tick += updateTimer_Tick;
+            updateCoordinator = new UpdateCoordinator(
+                CurrentVersion(),
+                AppContext.BaseDirectory,
+                IsWebcamOn,
+                ShowUpdate);
+            updateCoordinator.InstallLaunched += () =>
+            {
+                niTray.Visible = false;
+                Application.Exit();
+            };
+            ToolTip tips = new ToolTip(components);
+            tips.SetToolTip(numUpDownOff, "Automatic mode only. After the camera turns off, wait this long before turning the lights off. If the camera comes back during the wait, the lights stay on. Manual Off is immediate. New installs use 1500 ms; a value you already saved is kept.");
+            tips.SetToolTip(btnRetry, "Check the lights again and show whether each one responded.");
         }
 
-        public static string? ShowDialog(string text, string caption)
+        public static Version CurrentVersion()
         {
-            Form prompt = new Form()
+            return System.Reflection.Assembly.GetExecutingAssembly().GetName().Version ?? new Version(1, 0, 0);
+        }
+
+        protected override void OnHandleCreated(EventArgs e)
+        {
+            base.OnHandleCreated(e);
+            TitleBarTheme.Apply(Handle, effectiveTheme == EffectiveTheme.Dark);
+            if (hotkeysBound)
+                return;
+
+            hotkeysBound = true;
+            IReadOnlyList<string> errors = hotkeys.BindSaved(
+                Properties.Settings.Default.HotkeyAuto,
+                Properties.Settings.Default.HotkeyOn,
+                Properties.Settings.Default.HotkeyOff,
+                registrar);
+            RefreshShortcutLabels();
+            if (errors.Count > 0)
+                ShowUpdate(new UpdateUi(string.Join(" ", errors), true, btnInstallUpdate.Enabled, true));
+        }
+
+        protected override void WndProc(ref Message m)
+        {
+            if (m.Msg == WmHotkey && !capturingShortcut && HotkeyIds.TryMode(m.WParam.ToInt32(), out LightMode mode))
             {
-                Width = 300,
-                Height = 150,
+                SetLightMode(mode, true);
+                return;
+            }
+
+            base.WndProc(ref m);
+        }
+
+        private void MainForm_Load(object sender, EventArgs e)
+        {
+            ReloadLights();
+            ImportElgatoLights();
+            board.SyncAddresses(Addresses());
+            ShowLightRows();
+
+            numUpDown.Value = cameraOnDelay = Properties.Settings.Default.CameraDelay;
+            decimal savedOffDelay = Properties.Settings.Default.CameraOffDelay;
+            if (savedOffDelay > numUpDownOff.Maximum)
+                savedOffDelay = numUpDownOff.Maximum;
+            numUpDownOff.Value = cameraOffDelay = savedOffDelay;
+
+            cmbTheme.SelectedIndex = ThemeIndex(ThemePreferenceParser.Parse(Properties.Settings.Default.Theme));
+            chkAutomaticUpdates.Checked = Properties.Settings.Default.AutomaticUpdates;
+            LightMode persisted = LightModePreference.Parse(Properties.Settings.Default.LightMode);
+            rbLightAuto.Checked = persisted == LightMode.Auto;
+            rbLightOn.Checked = persisted == LightMode.On;
+            rbLightOff.Checked = persisted == LightMode.Off;
+            settingsReady = true;
+
+            ApplyTheme(ThemePreferenceParser.Parse(Properties.Settings.Default.Theme));
+            LightCommand? startup = controller.ApplyStartupMode(persisted, IsWebcamOn(), DateTime.UtcNow);
+            if (startup != null && controller.IsCurrent(startup.Value.Sequence))
+                SendPower(startup.Value.TurnOn);
+
+            ShowCamera(IsWebcamOn());
+            UpdateModeVisuals();
+            RefreshAll(userInitiated: true);
+            Icon = Properties.Resources.Icon;
+            ShowPendingUpdateError();
+            CleanupStaging();
+
+            if (chkAutomaticUpdates.Checked)
+            {
+                updateTimer.Interval = 5000;
+                updateTimer.Start();
+            }
+
+            SystemEvents.UserPreferenceChanged += SystemThemeChanged;
+        }
+
+        private void MainForm_Shown(object sender, EventArgs e)
+        {
+            chkStartWithWindows.Checked = startWithWindowsRegistry != null && startWithWindowsRegistry.GetValue("MyApp") != null;
+            if (chkStartWithWindows.Checked || startInBackground)
+                Hide();
+        }
+
+        private void MainForm_FormClosing(object sender, FormClosingEventArgs e)
+        {
+            if (e.CloseReason == CloseReason.UserClosing)
+            {
+                niTray.Visible = true;
+                Hide();
+                e.Cancel = true;
+                return;
+            }
+
+            SystemEvents.UserPreferenceChanged -= SystemThemeChanged;
+            cameraActivityMonitor?.Dispose();
+            cameraActivityMonitor = null;
+            hotkeys.ReleaseAll(registrar);
+            foreach (CancellationTokenSource call in lightCalls.Values)
+                call.Cancel();
+            updateCoordinator.Dispose();
+        }
+
+        private void tmrCameraCheck_Tick(object sender, EventArgs e)
+        {
+            bool cameraOn = IsWebcamOn();
+            ShowCamera(cameraOn);
+            LightCommand? command = controller.OnCameraSample(
+                cameraOn,
+                DateTime.UtcNow,
+                TimeSpan.FromMilliseconds((double)cameraOnDelay),
+                TimeSpan.FromMilliseconds((double)cameraOffDelay));
+            if (command != null && controller.IsCurrent(command.Value.Sequence))
+                SendPower(command.Value.TurnOn);
+
+            RefreshAll(userInitiated: false);
+            updateCoordinator.NotifyCamera(cameraOn, chkAutomaticUpdates.Checked);
+        }
+
+        private void updateTimer_Tick(object? sender, EventArgs e)
+        {
+            updateTimer.Interval = 6 * 60 * 60 * 1000;
+            if (chkAutomaticUpdates.Checked)
+                updateCoordinator.CheckNow();
+        }
+
+        private bool IsWebcamOn()
+        {
+            if (cameraActivityMonitor != null)
+                return cameraActivityMonitor.IsCameraStreaming;
+
+            using RegistryKey? webcamAppsKey = Registry.CurrentUser.OpenSubKey(WebcamRegistryKey);
+            if (webcamAppsKey == null)
+                return false;
+
+            if (AnySubKeyInUse(webcamAppsKey))
+                return true;
+
+            using RegistryKey? nonPackaged = webcamAppsKey.OpenSubKey("NonPackaged");
+            return nonPackaged != null && AnySubKeyInUse(nonPackaged);
+        }
+
+        private static bool AnySubKeyInUse(RegistryKey parent)
+        {
+            foreach (string name in parent.GetSubKeyNames())
+            {
+                using RegistryKey? subKey = parent.OpenSubKey(name);
+                if (subKey?.GetValue("LastUsedTimeStop") is long timestamp && timestamp == 0)
+                    return true;
+            }
+
+            return false;
+        }
+
+        private void ShowCamera(bool cameraOn)
+        {
+            lblCameraState.Text = cameraOn ? "Camera is ON" : "Camera is OFF";
+            lblCameraState.ForeColor = cameraOn ? StatusOnColor() : StatusOffColor();
+            niTray.Icon = cameraOn ? trayIconLit : trayIconUnlit;
+        }
+
+        private void SetLightMode(LightMode mode, bool persist)
+        {
+            if (applyingMode)
+                return;
+
+            applyingMode = true;
+            try
+            {
+                LightCommand? command = controller.SetMode(mode, IsWebcamOn(), DateTime.UtcNow);
+                if (persist && settingsReady)
+                {
+                    Properties.Settings.Default.LightMode = mode.ToString();
+                    Properties.Settings.Default.Save();
+                }
+
+                rbLightAuto.Checked = mode == LightMode.Auto;
+                rbLightOn.Checked = mode == LightMode.On;
+                rbLightOff.Checked = mode == LightMode.Off;
+                tsmiAuto.Checked = mode == LightMode.Auto;
+                tsmiOn.Checked = mode == LightMode.On;
+                tsmiOff.Checked = mode == LightMode.Off;
+                UpdateModeVisuals();
+                if (command != null && controller.IsCurrent(command.Value.Sequence))
+                    SendPower(command.Value.TurnOn);
+            }
+            finally
+            {
+                applyingMode = false;
+            }
+        }
+
+        private void UpdateModeVisuals()
+        {
+            LightControlSnapshot snapshot = LightModeController.Describe(controller.Mode);
+            lblMode.Text = snapshot.Detail;
+            Text = snapshot.Title;
+            niTray.Text = snapshot.Title.Length <= 63 ? snapshot.Title : "Auto Key Light";
+            lblMode.ForeColor = controller.Mode switch
+            {
+                LightMode.On => StatusOnColor(),
+                LightMode.Off => StatusOffColor(),
+                _ => ForegroundColor()
+            };
+            tsmiAuto.Checked = snapshot.AutoChecked;
+            tsmiOn.Checked = snapshot.OnChecked;
+            tsmiOff.Checked = snapshot.OffChecked;
+        }
+
+        private void LightMode_CheckedChanged(object sender, EventArgs e)
+        {
+            if (!settingsReady || applyingMode || sender is not RadioButton radio || !radio.Checked)
+                return;
+
+            LightMode mode = rbLightOn.Checked ? LightMode.On : rbLightOff.Checked ? LightMode.Off : LightMode.Auto;
+            SetLightMode(mode, true);
+        }
+
+        private void SendPower(bool turnOn)
+        {
+            foreach (LightTarget target in LightEndpoint.ForEachLight(Addresses(), turnOn ? LightPower.On : LightPower.Off))
+                _ = PutLightAsync(target.Address, turnOn);
+        }
+
+        private async Task PutLightAsync(string address, bool turnOn)
+        {
+            try
+            {
+                using StringContent content = new StringContent(LightEndpoint.PutBody(turnOn), Encoding.UTF8, "application/json");
+                await httpClient.PutAsync(LightEndpoint.LightsUrl(address), content);
+            }
+            catch
+            {
+            }
+        }
+
+        private void RefreshAll(bool userInitiated)
+        {
+            board.SyncAddresses(Addresses());
+            foreach (string address in Addresses())
+                RefreshOne(address, userInitiated);
+        }
+
+        private void RefreshOne(string address, bool userInitiated)
+        {
+            if (!userInitiated && lightCalls.ContainsKey(address))
+                return;
+
+            if (userInitiated && lightCalls.TryGetValue(address, out CancellationTokenSource? previous))
+            {
+                lightCalls.Remove(address);
+                previous.Cancel();
+                previous.Dispose();
+            }
+
+            int attempt = userInitiated ? board.BeginUserRetry(address) : board.BeginBackgroundRefresh(address);
+            ShowLightRows();
+            CancellationTokenSource cts = new CancellationTokenSource(LightTiming.LightRequestTimeout);
+            lightCalls[address] = cts;
+            _ = RefreshOneAsync(address, attempt, cts);
+        }
+
+        private async Task RefreshOneAsync(string address, int attempt, CancellationTokenSource cts)
+        {
+            LightLinkState state = LightLinkState.Unreachable;
+            string detail = LightDiagnostics.Unreachable(address);
+            try
+            {
+                using HttpResponseMessage response = await httpClient.GetAsync(LightEndpoint.LightsUrl(address), cts.Token);
+                if (!response.IsSuccessStatusCode)
+                {
+                    detail = LightDiagnostics.HttpFailure(address, (int)response.StatusCode);
+                }
+                else
+                {
+                    string body = await response.Content.ReadAsStringAsync(cts.Token);
+                    if (!LightResponse.TryReadPower(body, out bool on))
+                    {
+                        state = LightLinkState.UnexpectedReply;
+                        detail = LightDiagnostics.Unexpected(address);
+                    }
+                    else
+                    {
+                        state = on ? LightLinkState.On : LightLinkState.Off;
+                        detail = on ? LightDiagnostics.OnDetail(address) : LightDiagnostics.OffDetail(address);
+                    }
+                }
+            }
+            catch (OperationCanceledException)
+            {
+            }
+            catch (HttpRequestException)
+            {
+            }
+            catch
+            {
+            }
+
+            void Finish()
+            {
+                if (IsDisposed)
+                    return;
+
+                board.TryComplete(address, attempt, state, detail);
+                if (lightCalls.TryGetValue(address, out CancellationTokenSource? current) && current == cts)
+                {
+                    lightCalls.Remove(address);
+                    cts.Dispose();
+                }
+
+                ShowLightRows();
+            }
+
+            if (IsDisposed)
+                return;
+
+            if (InvokeRequired)
+                BeginInvoke(Finish);
+            else
+                Finish();
+        }
+
+        private void ShowLightRows()
+        {
+            IReadOnlyList<LightRow> rows = board.Rows;
+            bool same = lvLights.Items.Count == rows.Count;
+            for (int i = 0; same && i < rows.Count; i++)
+                same = string.Equals(lvLights.Items[i].Name, rows[i].Address, StringComparison.OrdinalIgnoreCase);
+
+            if (!same)
+            {
+                string? selected = SelectedAddress();
+                lvLights.BeginUpdate();
+                lvLights.Items.Clear();
+                foreach (LightRow row in rows)
+                {
+                    ListViewItem item = new ListViewItem(row.Address);
+                    item.Name = row.Address;
+                    item.SubItems.Add(row.StatusText);
+                    item.Selected = string.Equals(row.Address, selected, StringComparison.OrdinalIgnoreCase);
+                    lvLights.Items.Add(item);
+                }
+
+                lvLights.EndUpdate();
+            }
+            else
+            {
+                for (int i = 0; i < rows.Count; i++)
+                {
+                    if (lvLights.Items[i].SubItems.Count < 2)
+                        lvLights.Items[i].SubItems.Add(rows[i].StatusText);
+                    else if (lvLights.Items[i].SubItems[1].Text != rows[i].StatusText)
+                        lvLights.Items[i].SubItems[1].Text = rows[i].StatusText;
+                }
+            }
+
+            lblLightState.Text = board.Summary;
+            lblLightState.ForeColor = board.Kind switch
+            {
+                LightSummaryKind.AllOn => StatusOnColor(),
+                LightSummaryKind.AllOff => StatusOffColor(),
+                LightSummaryKind.Problems => ErrorColor(),
+                _ => ForegroundColor()
+            };
+            lblDetail.Text = board.FirstProblem ?? "";
+            lblDetail.Visible = board.FirstProblem != null;
+            lblDetail.ForeColor = ErrorColor();
+            btnRetry.Enabled = rows.Count > 0;
+            btnRemoveLight.Enabled = lvLights.SelectedItems.Count > 0;
+        }
+
+        private IEnumerable<string> Addresses()
+        {
+            foreach (ListViewItem item in lvLights.Items)
+            {
+                if (!string.IsNullOrWhiteSpace(item.Name))
+                    yield return item.Name;
+            }
+        }
+
+        private string? SelectedAddress()
+        {
+            return lvLights.SelectedItems.Count == 0 ? null : lvLights.SelectedItems[0].Name;
+        }
+
+        private void ReloadLights()
+        {
+            lvLights.Items.Clear();
+            if (Properties.Settings.Default.IPs == null)
+                Properties.Settings.Default.IPs = new StringCollection();
+
+            foreach (string? address in Properties.Settings.Default.IPs)
+            {
+                if (!string.IsNullOrWhiteSpace(address))
+                    AddAddress(address.Trim());
+            }
+        }
+
+        private void AddAddress(string address)
+        {
+            if (lvLights.Items.ContainsKey(address))
+                return;
+
+            ListViewItem item = new ListViewItem(address);
+            item.Name = address;
+            item.SubItems.Add("Not checked");
+            lvLights.Items.Add(item);
+        }
+
+        private void ImportElgatoLights()
+        {
+            string elgatoSettingsFile = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "Elgato", "ControlCenter", "Settings.xml");
+            try
+            {
+                System.Xml.XmlDocument doc = new System.Xml.XmlDocument();
+                doc.Load(elgatoSettingsFile);
+                foreach (System.Xml.XmlNode outer in doc.ChildNodes)
+                {
+                    if (outer.Name != "AppSettings")
+                        continue;
+
+                    foreach (System.Xml.XmlNode node in outer.ChildNodes)
+                    {
+                        if (node.Name != "Application")
+                            continue;
+
+                        foreach (System.Xml.XmlNode inner in node.ChildNodes)
+                        {
+                            if (inner.Name != "Accessories")
+                                continue;
+
+                            foreach (System.Xml.XmlNode accessory in inner.ChildNodes)
+                            {
+                                foreach (System.Xml.XmlNode attribute in accessory.ChildNodes)
+                                {
+                                    if (attribute.Name == "IpAddress")
+                                        AddAddress(attribute.InnerText.Trim());
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            catch (FileNotFoundException)
+            {
+            }
+            catch (DirectoryNotFoundException)
+            {
+            }
+        }
+
+        private void btnAddLight_Click(object sender, EventArgs e)
+        {
+            string? address = Prompt("Light IP", "New Light");
+            if (string.IsNullOrWhiteSpace(address))
+                return;
+
+            Properties.Settings.Default.IPs.Add(address.Trim());
+            Properties.Settings.Default.Save();
+            ReloadLights();
+            ImportElgatoLights();
+            board.SyncAddresses(Addresses());
+            ShowLightRows();
+            RefreshAll(true);
+        }
+
+        private void btnRemoveLight_Click(object sender, EventArgs e)
+        {
+            if (SelectedAddress() is not string address)
+                return;
+
+            Properties.Settings.Default.IPs.Remove(address);
+            Properties.Settings.Default.Save();
+            ReloadLights();
+            board.SyncAddresses(Addresses());
+            ShowLightRows();
+        }
+
+        private void btnRetry_Click(object sender, EventArgs e)
+        {
+            board.SyncAddresses(Addresses());
+            RefreshAll(userInitiated: true);
+        }
+
+        private void lvLights_SelectedIndexChanged(object sender, EventArgs e)
+        {
+            btnRemoveLight.Enabled = lvLights.SelectedItems.Count > 0;
+        }
+
+        private string? Prompt(string text, string caption)
+        {
+            using Form prompt = new Form
+            {
+                Width = 360,
+                Height = 160,
                 FormBorderStyle = FormBorderStyle.FixedDialog,
                 Text = caption,
-                StartPosition = FormStartPosition.CenterScreen
+                StartPosition = FormStartPosition.CenterScreen,
+                MaximizeBox = false,
+                MinimizeBox = false
             };
-            Label textLabel = new Label() { Left = 50, Top = 20, Text = text };
-            TextBox textBox = new TextBox() { Left = 50, Top = 50, Width = 200 };
-            Button confirmation = new Button() { Text = "Ok", Left = 50, Width = 60, Top = 80, DialogResult = DialogResult.OK };
-            Button cancel = new Button() { Text = "Cancel", Left = 110, Width = 60, Top = 80, DialogResult = DialogResult.Cancel };
-            confirmation.Click += (sender, e) => { prompt.Close(); };
-            cancel.Click += (sender, e) => { textBox.Text = null; prompt.Close(); };
+            Label textLabel = new Label { Left = 16, Top = 16, Width = 310, Text = text };
+            TextBox textBox = new TextBox { Left = 16, Top = 40, Width = 310 };
+            Button confirmation = new Button { Text = "Ok", Left = 16, Width = 80, Top = 76, DialogResult = DialogResult.OK };
+            Button cancel = new Button { Text = "Cancel", Left = 104, Width = 80, Top = 76, DialogResult = DialogResult.Cancel };
             prompt.Controls.Add(textBox);
             prompt.Controls.Add(confirmation);
             prompt.Controls.Add(textLabel);
             prompt.Controls.Add(cancel);
             prompt.AcceptButton = confirmation;
-
-            return prompt.ShowDialog() == DialogResult.OK ? textBox.Text.Trim() : null;
-        }
-
-        void ReloadLights()
-        {
-            lbIPs.Items.Clear();
-            lbIPs.ClearSelected();
-            btnRemoveLight.Enabled = false;
-
-            if (Properties.Settings.Default.IPs != null)
+            prompt.CancelButton = cancel;
+            if (palette != null)
             {
-                foreach (string? IP in Properties.Settings.Default.IPs)
-                {
-                    if (IP != null)
-                        lbIPs.Items.Add(IP);
-                }
-            }
-            else
-            {
-                Properties.Settings.Default.IPs = new StringCollection();
-            }
-        }
-
-        private void MainForm_Load(object sender, EventArgs e)
-        {
-            RefreshLightsState();
-            tmrCameraCheck_Tick(sender, e);
-
-            ReloadLights();
-
-            numUpDown.Value = cameraOnDelay = Properties.Settings.Default.CameraDelay;
-            numUpDownOff.Value = cameraOffDelay = Properties.Settings.Default.CameraOffDelay;
-
-            string elgatoSettingsFile = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "Elgato", "ControlCenter", "Settings.xml");
-
-            try
-            {
-                XmlDocument doc = new XmlDocument();
-                doc.Load(elgatoSettingsFile);
-
-                foreach (XmlNode outterNode in doc.ChildNodes)
-                {
-                    if (outterNode.Name == "AppSettings")
-                    {
-                        foreach (XmlNode node in outterNode.ChildNodes)
-                        {
-                            if (node.Name == "Application")
-                            {
-                                foreach (XmlNode innerNode in node.ChildNodes)
-                                {
-                                    if (innerNode.Name == "Accessories")
-                                    {
-                                        foreach (XmlNode accessoryNode in innerNode.ChildNodes)
-                                        {
-                                            foreach (XmlNode attribute in accessoryNode.ChildNodes)
-                                            {
-                                                if (attribute.Name == "IpAddress")
-                                                {
-                                                    if (!lbIPs.Items.Contains(attribute.InnerText.Trim()))
-                                                    {
-                                                        lbIPs.Items.Add(attribute.InnerText.Trim());
-                                                    }
-                                                    break;
-                                                }
-                                            }
-                                        }
-                                        break;
-                                    }
-                                }
-                                break;
-                            }
-                        }
-                        break;
-                    }
-                }
-            }
-            catch (FileNotFoundException) { }
-            catch (DirectoryNotFoundException) { }
-
-            niTray.Icon = TrayIconUnlit;
-            Icon = Properties.Resources.Icon;
-        }
-
-        private void RefreshLightsState()
-        {
-            foreach (string IP in lbIPs.Items)
-            {
-                RefreshLightState(IP);
-            }
-        }
-
-        public string FigureOutIPAndPort(string IP)
-        {
-            //If it has : it means there's a port specified, do not add it
-            if ( IP.Contains(':') )
-            {
-                return IP;
+                ThemeApplier.Apply(prompt, palette.Value);
+                prompt.HandleCreated += (_, _) => TitleBarTheme.Apply(prompt.Handle, effectiveTheme == EffectiveTheme.Dark);
             }
 
-            //Else append the default port
-            return $"{IP}:9123";
-        }
-
-        private async void RefreshLightState(string IP)
-        {
-            lblError.Visible = false;
-
-            try
-            {
-                string keylightURL = $"http://{FigureOutIPAndPort(IP)}/elgato/lights";
-
-                HttpResponseMessage response = await httpClient.GetAsync(keylightURL, requestStateToken);
-
-                if (response.IsSuccessStatusCode)
-                {
-                    bool success = false;
-
-                    JsonNode? responseRoot = JsonNode.Parse(await response.Content.ReadAsStringAsync(requestStateToken));
-                    if (responseRoot != null)
-                    {
-                        JsonNode? lightsArray = responseRoot.AsObject()["lights"];
-                        if (lightsArray != null)
-                        {
-                            JsonNode? lightObject = lightsArray.AsArray()[0];
-                            if (lightObject != null)
-                            {
-                                JsonNode? onProperty = lightObject.AsObject()["on"];
-                                if (onProperty != null)
-                                {
-                                    areLightsOn = onProperty.GetValue<int>() == 1;
-                                    lblLightState.Text = areLightsOn ? "Lights are ON" : "Lights are OFF";
-                                    lblLightState.ForeColor = areLightsOn ? Color.LawnGreen : Color.IndianRed;
-                                    success = true;
-                                }
-                            }
-                        }
-                    }
-
-                    if (!success)
-                    {
-                        lblError.Visible = true;
-                        lblError.Text = "Malformed JSON please\ncreate an Issue on GitHub";
-                    }
-                }
-                else
-                {
-                    lblError.Visible = true;
-                    lblLightState.Text = $"Error, check IP: {IP}";
-                }
-            }
-            catch
-            {
-                lblError.Visible = true;
-                lblError.Text = $"Error, check IP: {IP}";
-
-                requestStateTokenSource = new CancellationTokenSource();
-                requestStateToken = requestStateTokenSource.Token;
-            }
-        }
-
-        private async void ToggleLight(string IP, bool turnOn)
-        {
-            string keylightURL = $"http://{FigureOutIPAndPort(IP)}/elgato/lights";
-
-            int onState = turnOn ? 1 : 0;
-
-            string jsonPayload = $"{{\"numberOfLights\": 1, \"lights\": [{{\"on\": {onState}}}]}}";
-
-            StringContent httpContent = new StringContent(jsonPayload, Encoding.UTF8, "application/json");
-            try
-            {
-                await httpClient.PutAsync(keylightURL, httpContent);
-            }
-            catch { }
-        }
-
-        private void ToggleLights(bool turnOn)
-        {
-            foreach (string IP in lbIPs.Items)
-            {
-                ToggleLight(IP, turnOn);
-            }
-        }
-
-        private void CameraIsOn()
-        {
-            RefreshLightsState();
-
-            lblCameraState.Text = "Camera is ON";
-            lblCameraState.ForeColor = Color.LawnGreen;
-            niTray.Icon = TrayIconLit;
-
-            if (!isCameraOn)
-            {
-                cameraOnTime = DateTime.UtcNow;
-                isCameraOn = true;
-            }
-
-            if (cameraOnTime.AddMilliseconds(Decimal.ToDouble(cameraOnDelay)) > DateTime.UtcNow)
-                return;
-
-            if (lastAPICall.AddSeconds(1) > DateTime.UtcNow)
-                return;
-
-            ToggleLights(true);
-        }
-
-        private void CameraIsOff()
-        {
-            RefreshLightsState();
-            niTray.Icon = TrayIconUnlit;
-
-            lblCameraState.Text = "Camera is OFF";
-            lblCameraState.ForeColor = Color.IndianRed;
-
-            if (isCameraOn)
-            {
-                cameraOffTime = DateTime.UtcNow;
-                isCameraOn = false;
-            }
-
-            if (cameraOffTime.AddMilliseconds(Decimal.ToDouble(cameraOffDelay)) > DateTime.UtcNow)
-                return;
-
-            if (lastAPICall.AddSeconds(1) > DateTime.UtcNow)
-                return;
-
-            ToggleLights(false);
-        }
-
-        private void tmrCameraCheck_Tick(object sender, EventArgs e)
-        {
-            if (cameraActivityMonitor != null)
-            {
-                if (cameraActivityMonitor.IsCameraStreaming)
-                    CameraIsOn();
-                else
-                    CameraIsOff();
-
-                return;
-            }
-
-            RegistryKey? webcamAppsKey = Registry.CurrentUser.OpenSubKey(webcamRegistryKey);
-
-            if (webcamAppsKey == null)
-                return;
-
-            string[] packagedKeys = webcamAppsKey.GetSubKeyNames();
-
-            foreach (string key in packagedKeys)
-            {
-                RegistryKey? subKey = webcamAppsKey.OpenSubKey(key);
-
-                if (subKey == null)
-                    continue;
-
-                Int64? timestamp = (Int64?)subKey.GetValue("LastUsedTimeStop");
-
-                if (timestamp != null && timestamp == 0)
-                {
-                    CameraIsOn();
-                    return;
-                }
-            }
-
-            RegistryKey? nonPackagedKey;
-            if ((nonPackagedKey = webcamAppsKey.OpenSubKey("NonPackaged")) != null)
-            {
-                string[] nonPackagedKeys = nonPackagedKey.GetSubKeyNames();
-
-                foreach (string key in nonPackagedKeys)
-                {
-                    RegistryKey? subKey = nonPackagedKey.OpenSubKey(key);
-
-                    if (subKey == null)
-                        continue;
-
-                    Int64? timestamp = (Int64?)subKey.GetValue("LastUsedTimeStop");
-
-                    if (timestamp != null && timestamp == 0)
-                    {
-                        CameraIsOn();
-                        return;
-                    }
-                }
-            }
-
-            CameraIsOff();
+            return prompt.ShowDialog(Visible ? this : null) == DialogResult.OK ? textBox.Text.Trim() : null;
         }
 
         private void chkStartWithWindows_CheckedChanged(object sender, EventArgs e)
@@ -356,77 +585,6 @@ namespace AutoKeyLight
                 startWithWindowsRegistry.SetValue("MyApp", Application.ExecutablePath);
             else
                 startWithWindowsRegistry.DeleteValue("MyApp", false);
-        }
-
-        private void MainForm_FormClosing(object sender, FormClosingEventArgs e)
-        {
-            if (e.CloseReason == CloseReason.UserClosing)
-            {
-                niTray.Visible = true;
-                this.Hide();
-                e.Cancel = true;
-                return;
-            }
-
-            cameraActivityMonitor?.Dispose();
-            cameraActivityMonitor = null;
-        }
-
-        private void niTray_DoubleClick(object sender, EventArgs e)
-        {
-            this.Show();
-        }
-
-        private void MainForm_Shown(object sender, EventArgs e)
-        {
-            chkStartWithWindows.Checked = startWithWindowsRegistry != null && startWithWindowsRegistry.GetValue("MyApp") != null;
-
-            if (chkStartWithWindows.Checked)
-                this.Hide();
-        }
-
-        private void cmsTray_ItemClicked(object sender, ToolStripItemClickedEventArgs e)
-        {
-            if (e.ClickedItem == null)
-                return;
-
-            switch (e.ClickedItem.Name)
-            {
-                case "tsmiExit":
-                    Application.Exit();
-                    break;
-                case "tsmiOpen":
-                    Show();
-                    break;
-            }
-        }
-
-        private void btnAddLight_Click(object sender, EventArgs e)
-        {
-            string? newIP = ShowDialog("Light IP", "New Light");
-
-            if (!string.IsNullOrEmpty(newIP))
-            {
-                Properties.Settings.Default.IPs.Add(newIP);
-                Properties.Settings.Default.Save();
-                ReloadLights();
-            }
-        }
-
-        private void btnRemoveLight_Click(object sender, EventArgs e)
-        {
-            if (lbIPs.SelectedIndex >= 0)
-            {
-                Properties.Settings.Default.IPs.Remove((string?)lbIPs.SelectedItem);
-                Properties.Settings.Default.Save();
-
-                ReloadLights();
-            }
-        }
-
-        private void lbIPs_SelectedIndexChanged(object sender, EventArgs e)
-        {
-            btnRemoveLight.Enabled = lbIPs.SelectedIndex >= 0;
         }
 
         private void numUpDown_ValueChanged(object sender, EventArgs e)
@@ -441,6 +599,272 @@ namespace AutoKeyLight
             cameraOffDelay = numUpDownOff.Value;
             Properties.Settings.Default.CameraOffDelay = cameraOffDelay;
             Properties.Settings.Default.Save();
+        }
+
+        private void niTray_DoubleClick(object sender, EventArgs e)
+        {
+            Show();
+            Activate();
+        }
+
+        private void cmsTray_ItemClicked(object sender, ToolStripItemClickedEventArgs e)
+        {
+            if (e.ClickedItem == null)
+                return;
+
+            switch (e.ClickedItem.Name)
+            {
+                case "tsmiExit":
+                    Application.Exit();
+                    break;
+                case "tsmiOpen":
+                    Show();
+                    Activate();
+                    break;
+                case "tsmiAuto":
+                    SetLightMode(LightMode.Auto, true);
+                    break;
+                case "tsmiOn":
+                    SetLightMode(LightMode.On, true);
+                    break;
+                case "tsmiOff":
+                    SetLightMode(LightMode.Off, true);
+                    break;
+                case "tsmiShortcuts":
+                    ShowShortcuts();
+                    break;
+            }
+        }
+
+        private void btnShortcuts_Click(object sender, EventArgs e)
+        {
+            ShowShortcuts();
+        }
+
+        private void ShowShortcuts()
+        {
+            capturingShortcut = true;
+            try
+            {
+                using ShortcutDialog dialog = new ShortcutDialog(AssignShortcut, hotkeys.Display);
+                if (palette != null)
+                {
+                    ThemeApplier.Apply(dialog, palette.Value);
+                    dialog.HandleCreated += (_, _) => TitleBarTheme.Apply(dialog.Handle, effectiveTheme == EffectiveTheme.Dark);
+                }
+                else
+                {
+                    ThemeApplier.ApplySystem(dialog);
+                }
+
+                if (Visible)
+                    dialog.ShowDialog(this);
+                else
+                    dialog.ShowDialog();
+            }
+            finally
+            {
+                capturingShortcut = false;
+                RefreshShortcutLabels();
+            }
+        }
+
+        private HotkeyAssignment AssignShortcut(LightMode mode, HotkeyChord? chord)
+        {
+            HotkeyAssignment result = hotkeys.Assign(mode, chord, registrar);
+            string text = result.ActiveChord == null ? "" : HotkeyGrammar.Format(result.ActiveChord);
+            switch (mode)
+            {
+                case LightMode.On:
+                    Properties.Settings.Default.HotkeyOn = text;
+                    break;
+                case LightMode.Off:
+                    Properties.Settings.Default.HotkeyOff = text;
+                    break;
+                default:
+                    Properties.Settings.Default.HotkeyAuto = text;
+                    break;
+            }
+
+            Properties.Settings.Default.Save();
+            RefreshShortcutLabels();
+            if (!result.Applied && result.Error != null)
+                ShowUpdate(new UpdateUi(result.Error, btnCheckUpdates.Enabled, btnInstallUpdate.Enabled, true));
+
+            return result;
+        }
+
+        private void RefreshShortcutLabels()
+        {
+            tsmiAuto.ShortcutKeyDisplayString = hotkeys.Current(LightMode.Auto) == null ? "" : hotkeys.Display(LightMode.Auto);
+            tsmiOn.ShortcutKeyDisplayString = hotkeys.Current(LightMode.On) == null ? "" : hotkeys.Display(LightMode.On);
+            tsmiOff.ShortcutKeyDisplayString = hotkeys.Current(LightMode.Off) == null ? "" : hotkeys.Display(LightMode.Off);
+            bool problem = lblUpdate.Text.Contains("another program", StringComparison.OrdinalIgnoreCase)
+                || lblUpdate.Text.Contains("was not registered", StringComparison.OrdinalIgnoreCase);
+            btnShortcuts.Text = problem ? "Shortcuts…" : "Shortcuts";
+        }
+
+        private void cmbTheme_SelectedIndexChanged(object sender, EventArgs e)
+        {
+            if (!settingsReady)
+                return;
+
+            ThemePreference preference = SelectedTheme();
+            Properties.Settings.Default.Theme = preference.ToString();
+            Properties.Settings.Default.Save();
+            ApplyTheme(preference);
+        }
+
+        private ThemePreference SelectedTheme()
+        {
+            return cmbTheme.SelectedIndex switch
+            {
+                0 => ThemePreference.Light,
+                1 => ThemePreference.Dark,
+                _ => ThemePreference.FollowWindows
+            };
+        }
+
+        private static int ThemeIndex(ThemePreference preference)
+        {
+            return preference switch
+            {
+                ThemePreference.Light => 0,
+                ThemePreference.Dark => 1,
+                _ => 2
+            };
+        }
+
+        private void ApplyTheme(ThemePreference preference)
+        {
+            effectiveTheme = ThemeResolver.Resolve(preference, WindowsTheme.AppsUseLightTheme(), SystemInformation.HighContrast);
+            palette = effectiveTheme == EffectiveTheme.System ? null : ThemeResolver.PaletteFor(effectiveTheme);
+            if (palette == null)
+                ThemeApplier.ApplySystem(this, cmsTray);
+            else
+            {
+                ThemeApplier.Apply(this, palette.Value);
+                ThemeApplier.ApplyMenu(cmsTray, palette.Value);
+            }
+
+            TitleBarTheme.Apply(Handle, effectiveTheme == EffectiveTheme.Dark);
+            ShowCamera(IsWebcamOn());
+            UpdateModeVisuals();
+            ShowLightRows();
+            lblUpdate.ForeColor = updateProblem ? ErrorColor() : MutedColor();
+        }
+
+        private void SystemThemeChanged(object sender, UserPreferenceChangedEventArgs e)
+        {
+            if (e.Category is not (UserPreferenceCategory.General or UserPreferenceCategory.Color or UserPreferenceCategory.Accessibility))
+                return;
+
+            if (IsDisposed || SelectedTheme() != ThemePreference.FollowWindows)
+                return;
+
+            BeginInvoke(() => ApplyTheme(ThemePreference.FollowWindows));
+        }
+
+        private void chkAutomaticUpdates_CheckedChanged(object sender, EventArgs e)
+        {
+            if (!settingsReady)
+                return;
+
+            Properties.Settings.Default.AutomaticUpdates = chkAutomaticUpdates.Checked;
+            Properties.Settings.Default.Save();
+            if (chkAutomaticUpdates.Checked)
+            {
+                updateTimer.Interval = 6 * 60 * 60 * 1000;
+                updateTimer.Start();
+                updateCoordinator.CheckNow();
+            }
+            else
+            {
+                updateTimer.Stop();
+                ShowUpdate(new UpdateUi(UpdateMessages.AutomaticOff + " Version " + ReleaseVersion.Format(CurrentVersion()) + ".", true, btnInstallUpdate.Enabled, false));
+            }
+        }
+
+        private void btnCheckUpdates_Click(object sender, EventArgs e)
+        {
+            updateCoordinator.CheckNow();
+        }
+
+        private void btnInstallUpdate_Click(object sender, EventArgs e)
+        {
+            updateCoordinator.RequestInstall();
+        }
+
+        private void ShowUpdate(UpdateUi state)
+        {
+            if (InvokeRequired)
+            {
+                BeginInvoke(() => ShowUpdate(state));
+                return;
+            }
+
+            updateProblem = state.Problem;
+            lblUpdate.Text = state.Status;
+            lblUpdate.ForeColor = state.Problem ? ErrorColor() : MutedColor();
+            btnCheckUpdates.Enabled = state.CheckEnabled;
+            btnInstallUpdate.Enabled = state.InstallEnabled;
+            RefreshShortcutLabels();
+        }
+
+        private void ShowPendingUpdateError()
+        {
+            try
+            {
+                string path = UpdateInstaller.LastErrorPath();
+                if (!File.Exists(path))
+                    return;
+
+                string message = File.ReadAllText(path).Trim();
+                File.Delete(path);
+                if (message.Length > 0)
+                    ShowUpdate(new UpdateUi(message, true, false, true));
+            }
+            catch
+            {
+            }
+        }
+
+        private static void CleanupStaging()
+        {
+            try
+            {
+                string staging = Path.Combine(UpdateInstaller.UpdatesRoot(), "staging");
+                if (Directory.Exists(staging) && !PackageRules.IsInside(AppContext.BaseDirectory, staging))
+                    Directory.Delete(staging, true);
+            }
+            catch
+            {
+            }
+        }
+
+        private Color StatusOnColor()
+        {
+            return palette?.StatusOn.ToColor() ?? SystemColors.ControlText;
+        }
+
+        private Color StatusOffColor()
+        {
+            return palette?.StatusOff.ToColor() ?? SystemColors.ControlText;
+        }
+
+        private Color ErrorColor()
+        {
+            return palette?.Error.ToColor() ?? SystemColors.ControlText;
+        }
+
+        private Color MutedColor()
+        {
+            return palette?.Muted.ToColor() ?? SystemColors.ControlText;
+        }
+
+        private Color ForegroundColor()
+        {
+            return palette?.Foreground.ToColor() ?? SystemColors.ControlText;
         }
     }
 }
