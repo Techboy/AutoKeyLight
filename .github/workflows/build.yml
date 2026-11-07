@@ -1,0 +1,40 @@
+name: Build
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+          cache: false
+      - name: Test
+        run: dotnet test AutoKeyLight.Core.Tests/AutoKeyLight.Core.Tests.csproj -c Release
+
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+          cache: false
+      - name: Test and build
+        run: dotnet test AutoKeyLight.sln -c Release
+      - name: Publish Windows app
+        shell: pwsh
+        run: |
+          $out = Join-Path $env:RUNNER_TEMP "autokeylight-publish"
+          dotnet publish AutoKeyLight/AutoKeyLight.csproj -c Release -r win-x64 --self-contained true -p:Version=1.0.0 -p:DebugType=none -p:DebugSymbols=false -o $out
+          if (!(Test-Path (Join-Path $out "AutoKeyLight.exe"))) { throw "AutoKeyLight.exe was not published." }
+          $env:AUTOKEYLIGHT_PUBLISH_DIR = $out
+          dotnet test AutoKeyLight.Core.Tests/AutoKeyLight.Core.Tests.csproj -c Release --filter PublishedOutputMatchesPackageRules
