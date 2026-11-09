@@ -620,31 +620,38 @@ namespace AutoKeyLight
 
         private LightRecord? PromptLight(LightRecord? existing)
         {
-            using Form prompt = new Form
+            using Form prompt = new Form();
+            int buttonHeight = btnAddLight.Height;
+            DialogShell.Prepare(prompt, existing == null ? "Add light" : "Edit light", Font, buttonHeight);
+            TableLayoutPanel table = DialogShell.Content();
+            int fieldWidth = Math.Max(320, buttonHeight * 12);
+            Label addressLabel = new Label { AutoSize = true, Text = "&Address" };
+            TextBox addressBox = new TextBox
             {
-                Width = 420,
-                Height = 210,
-                FormBorderStyle = FormBorderStyle.FixedDialog,
-                Text = existing == null ? "Add light" : "Edit light",
-                StartPosition = FormStartPosition.CenterScreen,
-                MaximizeBox = false,
-                MinimizeBox = false
+                Text = existing?.Address ?? "",
+                AccessibleName = "Address",
+                MinimumSize = new Size(fieldWidth, 0),
+                Anchor = AnchorStyles.Left | AnchorStyles.Right | AnchorStyles.Top
             };
-            Label addressLabel = new Label { Left = 16, Top = 16, Width = 370, Text = "&Address" };
-            TextBox addressBox = new TextBox { Left = 16, Top = 36, Width = 370, Text = existing?.Address ?? "", AccessibleName = "Address" };
-            Label descriptionLabel = new Label { Left = 16, Top = 68, Width = 370, Text = "&Description" };
-            TextBox descriptionBox = new TextBox { Left = 16, Top = 88, Width = 370, Text = existing?.Description ?? "", AccessibleName = "Description" };
-            Button confirmation = new Button { Text = "OK", Left = 16, Width = 80, Top = 128, DialogResult = DialogResult.OK };
-            Button cancel = new Button { Text = "Cancel", Left = 104, Width = 80, Top = 128, DialogResult = DialogResult.Cancel };
-            prompt.Controls.Add(addressLabel);
-            prompt.Controls.Add(addressBox);
-            prompt.Controls.Add(descriptionLabel);
-            prompt.Controls.Add(descriptionBox);
-            prompt.Controls.Add(confirmation);
-            prompt.Controls.Add(cancel);
+            Label descriptionLabel = new Label { AutoSize = true, Text = "&Description" };
+            TextBox descriptionBox = new TextBox
+            {
+                Text = existing?.Description ?? "",
+                AccessibleName = "Description",
+                MinimumSize = new Size(fieldWidth, 0),
+                Anchor = AnchorStyles.Left | AnchorStyles.Right | AnchorStyles.Top
+            };
+            Button confirmation = DialogShell.CommandButton("OK", DialogResult.OK, buttonHeight);
+            Button cancel = DialogShell.CommandButton("Cancel", DialogResult.Cancel, buttonHeight);
             prompt.AcceptButton = confirmation;
             prompt.CancelButton = cancel;
-            addressLabel.Click += (_, _) => addressBox.Focus();
+            DialogShell.AddRow(table, addressLabel, new Padding(0, 0, 0, 4));
+            DialogShell.AddRow(table, addressBox, new Padding(0, 0, 0, 8));
+            DialogShell.AddRow(table, descriptionLabel, new Padding(0, 0, 0, 4));
+            DialogShell.AddRow(table, descriptionBox, new Padding(0, 0, 0, 4));
+            DialogShell.AddRow(table, DialogShell.ButtonRow(false, confirmation, cancel), Padding.Empty);
+            prompt.Controls.Add(table);
+            prompt.ResumeLayout(true);
             if (palette != null)
             {
                 ThemeApplier.Apply(prompt, palette.Value);
@@ -659,7 +666,7 @@ namespace AutoKeyLight
 
         private void helpAbout_Click(object sender, EventArgs e)
         {
-            using AboutForm about = new AboutForm(CurrentVersion());
+            using AboutForm about = new AboutForm(CurrentVersion(), Font, btnAddLight.Height);
             if (palette != null)
             {
                 ThemeApplier.Apply(about, palette.Value);
@@ -688,18 +695,15 @@ namespace AutoKeyLight
             lvLights.Invalidate();
             cmbTheme.FlatStyle = FlatStyle.Flat;
             cmbTheme.DrawMode = DrawMode.OwnerDrawFixed;
-            Color menuBack = palette?.Background.ToColor() ?? SystemColors.Control;
-            Color menuFore = palette?.Foreground.ToColor() ?? SystemColors.ControlText;
-            menuMain.BackColor = menuBack;
-            menuMain.ForeColor = menuFore;
-            menuMain.Renderer = palette == null
-                ? new ToolStripProfessionalRenderer()
-                : new ToolStripProfessionalRenderer(new PaletteColorTable(palette.Value));
-            foreach (ToolStripItem item in menuMain.Items)
+            if (palette == null)
             {
-                item.BackColor = menuBack;
-                item.ForeColor = menuFore;
+                menuMain.Renderer = new ToolStripProfessionalRenderer();
+                menuMain.BackColor = SystemColors.MenuBar;
+                menuMain.ForeColor = SystemColors.MenuText;
+                return;
             }
+
+            ThemeApplier.ApplyMenu(menuMain, palette.Value);
         }
 
         private void lvLights_DrawColumnHeader(object sender, DrawListViewColumnHeaderEventArgs e)
@@ -844,7 +848,7 @@ namespace AutoKeyLight
             capturingShortcut = true;
             try
             {
-                using ShortcutDialog dialog = new ShortcutDialog(AssignShortcut, hotkeys.Display);
+                using ShortcutDialog dialog = new ShortcutDialog(AssignShortcut, hotkeys.Display, Font, btnAddLight.Height);
                 if (palette != null)
                 {
                     ThemeApplier.Apply(dialog, palette.Value);

@@ -10,36 +10,44 @@ namespace AutoKeyLight
         private readonly Label status;
         private LightMode? capturing;
 
-        public ShortcutDialog(Func<LightMode, HotkeyChord?, HotkeyAssignment> assign, Func<LightMode, string> current)
+        public ShortcutDialog(Func<LightMode, HotkeyChord?, HotkeyAssignment> assign, Func<LightMode, string> current, Font font, int buttonHeight)
         {
             this.assign = assign;
             this.current = current;
-            Text = "Keyboard shortcuts";
-            FormBorderStyle = FormBorderStyle.FixedDialog;
-            MaximizeBox = false;
-            MinimizeBox = false;
-            StartPosition = FormStartPosition.CenterScreen;
-            ClientSize = new Size(470, 250);
+            DialogShell.Prepare(this, "Keyboard shortcuts", font, buttonHeight);
             KeyPreview = true;
+
+            TableLayoutPanel table = DialogShell.Content();
+            table.ColumnCount = 4;
+            table.ColumnStyles.Clear();
+            table.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
+            table.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
+            table.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
+            table.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
 
             Label intro = new Label
             {
-                Left = 12,
-                Top = 12,
-                Width = 446,
-                Height = 52,
+                AutoSize = true,
+                MaximumSize = new Size(460, 0),
                 Text = "These shortcuts work while this window is closed. Nothing is reserved at first, so other programs keep their keys. Use Ctrl, Alt, or Shift with a letter, number, or function key."
             };
-            Controls.Add(intro);
+            table.Controls.Add(intro, 0, 0);
+            table.SetColumnSpan(intro, 4);
+            table.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+            table.RowCount = 1;
 
-            int top = 72;
+            int row = 1;
             foreach (LightMode mode in new[] { LightMode.Auto, LightMode.On, LightMode.Off })
             {
                 LightMode captured = mode;
-                Label name = new Label { Left = 12, Top = top + 4, Width = 48, Text = mode.ToString() };
-                Label value = new Label { Left = 68, Top = top + 4, Width = 180, Text = current(mode) };
-                Button set = new Button { Left = 258, Top = top, Width = 88, Height = 26, Text = "Set" };
-                Button clear = new Button { Left = 354, Top = top, Width = 88, Height = 26, Text = "Clear" };
+                Label name = new Label { AutoSize = true, Text = mode.ToString(), Anchor = AnchorStyles.Left, Margin = new Padding(0, 8, 12, 0) };
+                Label value = new Label { AutoSize = true, Text = current(mode), Anchor = AnchorStyles.Left, Margin = new Padding(0, 8, 12, 0) };
+                Button set = DialogShell.CommandButton("Set", DialogResult.None, buttonHeight);
+                Button clear = DialogShell.CommandButton("Clear", DialogResult.None, buttonHeight);
+                set.DialogResult = DialogResult.None;
+                clear.DialogResult = DialogResult.None;
+                set.Margin = new Padding(0, 4, 8, 0);
+                clear.Margin = new Padding(0, 4, 0, 0);
                 set.Click += (_, _) =>
                 {
                     capturing = captured;
@@ -53,15 +61,27 @@ namespace AutoKeyLight
                     RefreshDisplays();
                 };
                 displays[mode] = value;
-                Controls.Add(name);
-                Controls.Add(value);
-                Controls.Add(set);
-                Controls.Add(clear);
-                top += 34;
+                table.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+                table.RowCount = row + 1;
+                table.Controls.Add(name, 0, row);
+                table.Controls.Add(value, 1, row);
+                table.Controls.Add(set, 2, row);
+                table.Controls.Add(clear, 3, row);
+                row++;
             }
 
-            status = new Label { Left = 12, Top = 184, Width = 446, Height = 52 };
-            Controls.Add(status);
+            status = new Label
+            {
+                AutoSize = true,
+                MaximumSize = new Size(460, 0),
+                Margin = new Padding(0, 12, 0, 0)
+            };
+            table.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+            table.RowCount = row + 1;
+            table.Controls.Add(status, 0, row);
+            table.SetColumnSpan(status, 4);
+            Controls.Add(table);
+            ResumeLayout(true);
         }
 
         protected override void OnKeyDown(KeyEventArgs e)

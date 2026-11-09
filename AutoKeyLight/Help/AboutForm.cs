@@ -2,22 +2,16 @@ namespace AutoKeyLight
 {
     internal sealed class AboutForm : Form
     {
-        public AboutForm(Version version)
+        public AboutForm(Version version, Font font, int buttonHeight)
         {
-            Text = "About Auto Key Light";
-            FormBorderStyle = FormBorderStyle.FixedDialog;
-            MaximizeBox = false;
-            MinimizeBox = false;
-            StartPosition = FormStartPosition.CenterParent;
-            ClientSize = new Size(460, 280);
-            Font = SystemFonts.MessageBoxFont;
+            DialogShell.Prepare(this, "About Auto Key Light", font, buttonHeight);
+            int fieldWidth = Math.Max(360, buttonHeight * 12);
+            TableLayoutPanel table = DialogShell.Content();
 
             Label body = new Label
             {
-                Left = 16,
-                Top = 16,
-                Width = 428,
-                Height = 150,
+                AutoSize = true,
+                MaximumSize = new Size(fieldWidth, 0),
                 Text = "Auto Key Light " + version.ToString(3) + "\r\n\r\n" +
                     "Auto Key Light is an independent app. It turns Elgato lights on and off when the webcam turns on and off, and it can hold the lights on or off manually.\r\n\r\n" +
                     "It is not made, sold, or endorsed by Elgato.\r\n\r\n" +
@@ -25,28 +19,21 @@ namespace AutoKeyLight
             };
             LinkLabel link = new LinkLabel
             {
-                Left = 16,
-                Top = 176,
-                Width = 428,
-                Height = 24,
+                AutoSize = true,
                 Text = "https://www.elgato.com/",
-                TabStop = true
+                TabStop = true,
+                LinkBehavior = LinkBehavior.HoverUnderline
             };
             link.LinkClicked += (_, _) => Program.OpenElgatoWebsite();
-            Button close = new Button
-            {
-                Text = "Close",
-                Left = 364,
-                Top = 232,
-                Width = 80,
-                Height = 28,
-                DialogResult = DialogResult.OK
-            };
+            Button close = DialogShell.CommandButton("Close", DialogResult.OK, buttonHeight);
             AcceptButton = close;
             CancelButton = close;
-            Controls.Add(body);
-            Controls.Add(link);
-            Controls.Add(close);
+
+            DialogShell.AddRow(table, body, new Padding(0, 0, 0, buttonHeight / 3));
+            DialogShell.AddRow(table, link, new Padding(0, 0, 0, buttonHeight / 4));
+            DialogShell.AddRow(table, DialogShell.ButtonRow(true, close), Padding.Empty);
+            Controls.Add(table);
+            ResumeLayout(true);
         }
     }
 }

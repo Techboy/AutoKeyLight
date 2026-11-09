@@ -40,7 +40,8 @@ namespace AutoKeyLight.Core
         ThemeColor MenuBackground,
         ThemeColor MenuForeground,
         ThemeColor MenuHighlight,
-        ThemeColor MenuHighlightText)
+        ThemeColor MenuHighlightText,
+        ThemeColor Link)
     {
         public static ThemePalette Light { get; } = new(
             Background: ThemeColor.FromHex(0xF3F3F3),
@@ -57,7 +58,8 @@ namespace AutoKeyLight.Core
             MenuBackground: ThemeColor.FromHex(0xFFFFFF),
             MenuForeground: ThemeColor.FromHex(0x202020),
             MenuHighlight: ThemeColor.FromHex(0xD6E4F5),
-            MenuHighlightText: ThemeColor.FromHex(0x202020));
+            MenuHighlightText: ThemeColor.FromHex(0x202020),
+            Link: ThemeColor.FromHex(0x0B4F9C));
 
         public static ThemePalette Dark { get; } = new(
             Background: ThemeColor.FromHex(0x1F1F1F),
@@ -74,7 +76,8 @@ namespace AutoKeyLight.Core
             MenuBackground: ThemeColor.FromHex(0x2C2C2C),
             MenuForeground: ThemeColor.FromHex(0xF2F2F2),
             MenuHighlight: ThemeColor.FromHex(0x355F8A),
-            MenuHighlightText: ThemeColor.FromHex(0xF2F2F2));
+            MenuHighlightText: ThemeColor.FromHex(0xF2F2F2),
+            Link: ThemeColor.FromHex(0x9ECAFF));
 
         public IEnumerable<(string Name, ThemeColor Text, ThemeColor Behind)> TextPairs()
         {
@@ -87,6 +90,7 @@ namespace AutoKeyLight.Core
             yield return ("muted", Muted, Background);
             yield return ("menu", MenuForeground, MenuBackground);
             yield return ("menu selection", MenuHighlightText, MenuHighlight);
+            yield return ("link", Link, Background);
         }
     }
 
