@@ -22,6 +22,9 @@ jobs:
 
   windows:
     runs-on: windows-latest
+    permissions:
+      contents: read
+      actions: write
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-dotnet@v4
@@ -45,8 +48,16 @@ jobs:
           Invoke-WebRequest -Uri "https://github.com/jrsoftware/issrc/releases/download/is-6_4_3/innosetup-6.4.3.exe" -OutFile $innoSetup
           Start-Process -FilePath $innoSetup -ArgumentList "/VERYSILENT","/SUPPRESSMSGBOXES","/NORESTART","/DIR=$innoDir" -Wait
           & (Join-Path $innoDir "ISCC.exe") "/DMyAppVersion=1.0.0" "/DPublishDir=$out" "installer\AutoKeyLight.iss"
-          $setup = Join-Path (Resolve-Path "installer") "AutoKeyLight-Setup.exe"
-          if (!(Test-Path $setup)) { throw "The per-user installer was not created." }
+          $builtSetup = Join-Path (Resolve-Path "installer") "AutoKeyLight-Setup.exe"
+          if (!(Test-Path $builtSetup)) { throw "The per-user installer was not created." }
+          $dist = Join-Path $env:GITHUB_WORKSPACE "dist"
+          New-Item -ItemType Directory -Force -Path $dist | Out-Null
+          $setup = Join-Path $dist "AutoKeyLight-Setup.exe"
+          Copy-Item $builtSetup $setup
+          $zip = Join-Path $dist "AutoKeyLight-win-x64.zip"
+          if (Test-Path $zip) { Remove-Item $zip }
+          Add-Type -AssemblyName System.IO.Compression.FileSystem
+          [System.IO.Compression.ZipFile]::CreateFromDirectory($out, $zip)
           $dest = Join-Path $env:LOCALAPPDATA "Programs\AutoKeyLight"
           $uninstaller = Join-Path $dest "unins000.exe"
           if (Test-Path $uninstaller) { Start-Process -FilePath $uninstaller -ArgumentList "/VERYSILENT","/NORESTART" -Wait }
@@ -72,3 +83,13 @@ jobs:
           while ((Test-Path (Join-Path $dest "AutoKeyLight.exe")) -and (Get-Date) -lt $deadline) { Start-Sleep -Seconds 1 }
           if (Test-Path (Join-Path $dest "AutoKeyLight.exe")) { throw "Uninstall left the program in place." }
           if (!(Test-Path $marker)) { throw "Uninstall removed user settings." }
+          Get-Item $setup, $zip | ForEach-Object { Write-Host ("{0} {1} bytes" -f $_.Name, $_.Length) }
+      - name: Upload setup and portable zip
+        uses: actions/upload-artifact@v4
+        with:
+          name: AutoKeyLight-windows
+          path: |
+            dist/AutoKeyLight-Setup.exe
+            dist/AutoKeyLight-win-x64.zip
+          retention-days: 7
+          if-no-files-found: error
