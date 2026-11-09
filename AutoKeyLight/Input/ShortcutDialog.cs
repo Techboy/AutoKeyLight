@@ -10,14 +10,15 @@ namespace AutoKeyLight
         private readonly Label status;
         private LightMode? capturing;
 
-        public ShortcutDialog(Func<LightMode, HotkeyChord?, HotkeyAssignment> assign, Func<LightMode, string> current, Font font, int buttonHeight)
+        public ShortcutDialog(Func<LightMode, HotkeyChord?, HotkeyAssignment> assign, Func<LightMode, string> current)
         {
             this.assign = assign;
             this.current = current;
-            DialogShell.Prepare(this, "Keyboard shortcuts", font, buttonHeight);
+            const int logicalWidth = 480;
+            DialogShell.Prepare(this, "Keyboard shortcuts", logicalWidth);
             KeyPreview = true;
 
-            TableLayoutPanel table = DialogShell.Content();
+            TableLayoutPanel table = DialogShell.Content(logicalWidth);
             table.ColumnCount = 4;
             table.ColumnStyles.Clear();
             table.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
@@ -25,12 +26,9 @@ namespace AutoKeyLight
             table.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
             table.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
 
-            Label intro = new Label
-            {
-                AutoSize = true,
-                MaximumSize = new Size(460, 0),
-                Text = "These shortcuts work while this window is closed. Nothing is reserved at first, so other programs keep their keys. Use Ctrl, Alt, or Shift with a letter, number, or function key."
-            };
+            Label intro = DialogShell.WrappingLabel(
+                "These shortcuts work while this window is closed. Nothing is reserved at first, so other programs keep their keys. Use Ctrl, Alt, or Shift with a letter, number, or function key.",
+                logicalWidth);
             table.Controls.Add(intro, 0, 0);
             table.SetColumnSpan(intro, 4);
             table.RowStyles.Add(new RowStyle(SizeType.AutoSize));
@@ -42,8 +40,8 @@ namespace AutoKeyLight
                 LightMode captured = mode;
                 Label name = new Label { AutoSize = true, Text = mode.ToString(), Anchor = AnchorStyles.Left, Margin = new Padding(0, 8, 12, 0) };
                 Label value = new Label { AutoSize = true, Text = current(mode), Anchor = AnchorStyles.Left, Margin = new Padding(0, 8, 12, 0) };
-                Button set = DialogShell.CommandButton("Set", DialogResult.None, buttonHeight);
-                Button clear = DialogShell.CommandButton("Clear", DialogResult.None, buttonHeight);
+                Button set = DialogShell.CommandButton("Set", DialogResult.None);
+                Button clear = DialogShell.CommandButton("Clear", DialogResult.None);
                 set.DialogResult = DialogResult.None;
                 clear.DialogResult = DialogResult.None;
                 set.Margin = new Padding(0, 4, 8, 0);
@@ -70,12 +68,8 @@ namespace AutoKeyLight
                 row++;
             }
 
-            status = new Label
-            {
-                AutoSize = true,
-                MaximumSize = new Size(460, 0),
-                Margin = new Padding(0, 12, 0, 0)
-            };
+            status = DialogShell.WrappingLabel("", logicalWidth);
+            status.Margin = new Padding(0, 12, 0, 0);
             table.RowStyles.Add(new RowStyle(SizeType.AutoSize));
             table.RowCount = row + 1;
             table.Controls.Add(status, 0, row);

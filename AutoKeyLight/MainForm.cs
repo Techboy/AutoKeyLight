@@ -621,35 +621,22 @@ namespace AutoKeyLight
         private LightRecord? PromptLight(LightRecord? existing)
         {
             using Form prompt = new Form();
-            int buttonHeight = btnAddLight.Height;
-            DialogShell.Prepare(prompt, existing == null ? "Add light" : "Edit light", Font, buttonHeight);
-            TableLayoutPanel table = DialogShell.Content();
-            int fieldWidth = Math.Max(320, buttonHeight * 12);
+            const int logicalWidth = 400;
+            DialogShell.Prepare(prompt, existing == null ? "Add light" : "Edit light", logicalWidth);
+            TableLayoutPanel table = DialogShell.Content(logicalWidth);
             Label addressLabel = new Label { AutoSize = true, Text = "&Address" };
-            TextBox addressBox = new TextBox
-            {
-                Text = existing?.Address ?? "",
-                AccessibleName = "Address",
-                MinimumSize = new Size(fieldWidth, 0),
-                Anchor = AnchorStyles.Left | AnchorStyles.Right | AnchorStyles.Top
-            };
+            TextBox addressBox = DialogShell.Field(existing?.Address ?? "", "Address", logicalWidth);
             Label descriptionLabel = new Label { AutoSize = true, Text = "&Description" };
-            TextBox descriptionBox = new TextBox
-            {
-                Text = existing?.Description ?? "",
-                AccessibleName = "Description",
-                MinimumSize = new Size(fieldWidth, 0),
-                Anchor = AnchorStyles.Left | AnchorStyles.Right | AnchorStyles.Top
-            };
-            Button confirmation = DialogShell.CommandButton("OK", DialogResult.OK, buttonHeight);
-            Button cancel = DialogShell.CommandButton("Cancel", DialogResult.Cancel, buttonHeight);
+            TextBox descriptionBox = DialogShell.Field(existing?.Description ?? "", "Description", logicalWidth);
+            Button confirmation = DialogShell.CommandButton("OK", DialogResult.OK);
+            Button cancel = DialogShell.CommandButton("Cancel", DialogResult.Cancel);
             prompt.AcceptButton = confirmation;
             prompt.CancelButton = cancel;
             DialogShell.AddRow(table, addressLabel, new Padding(0, 0, 0, 4));
             DialogShell.AddRow(table, addressBox, new Padding(0, 0, 0, 8));
             DialogShell.AddRow(table, descriptionLabel, new Padding(0, 0, 0, 4));
             DialogShell.AddRow(table, descriptionBox, new Padding(0, 0, 0, 4));
-            DialogShell.AddRow(table, DialogShell.ButtonRow(false, confirmation, cancel), Padding.Empty);
+            DialogShell.AddRow(table, DialogShell.ButtonRow(logicalWidth, cancel, confirmation), Padding.Empty);
             prompt.Controls.Add(table);
             prompt.ResumeLayout(true);
             if (palette != null)
@@ -666,7 +653,7 @@ namespace AutoKeyLight
 
         private void helpAbout_Click(object sender, EventArgs e)
         {
-            using AboutForm about = new AboutForm(CurrentVersion(), Font, btnAddLight.Height);
+            using AboutForm about = new AboutForm(CurrentVersion());
             if (palette != null)
             {
                 ThemeApplier.Apply(about, palette.Value);
@@ -848,7 +835,7 @@ namespace AutoKeyLight
             capturingShortcut = true;
             try
             {
-                using ShortcutDialog dialog = new ShortcutDialog(AssignShortcut, hotkeys.Display, Font, btnAddLight.Height);
+                using ShortcutDialog dialog = new ShortcutDialog(AssignShortcut, hotkeys.Display);
                 if (palette != null)
                 {
                     ThemeApplier.Apply(dialog, palette.Value);
