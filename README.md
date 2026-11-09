@@ -2,7 +2,7 @@
 
 Automatically turns on and off your Elgato lights when you turn on and off your webcam.
 
-![image](https://user-images.githubusercontent.com/15985195/201465765-105bb629-f124-449f-b946-a6f8cd6eb5ed.png)
+![AutoKeyLight main window](docs/autokeylight-window.png)
 
 The app will try finding your lights IPs from an existing Elgato Control Center installation. If that fails, please add them manually.
 
