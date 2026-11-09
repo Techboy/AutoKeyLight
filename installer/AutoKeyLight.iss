@@ -45,7 +45,7 @@ ChangesAssociations=no
 Source: "{#PublishDir}\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
 
 [Icons]
-Name: "{userstartmenu}\{#MyAppName}"; Filename: "{app}\{#MyAppExe}"; Comment: "Turn Elgato lights on and off with the webcam"
+Name: "{userprograms}\{#MyAppName}"; Filename: "{app}\{#MyAppExe}"; Comment: "Turn Elgato lights on and off with the webcam"
 
 [Run]
 Filename: "{app}\{#MyAppExe}"; Description: "Start {#MyAppName}"; Flags: nowait postinstall skipifsilent

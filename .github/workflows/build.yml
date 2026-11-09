@@ -53,7 +53,12 @@ jobs:
           Start-Process -FilePath $setup -ArgumentList "/VERYSILENT","/SUPPRESSMSGBOXES","/NORESTART" -Wait
           if (!(Test-Path (Join-Path $dest "AutoKeyLight.exe"))) { throw "The installer did not place AutoKeyLight.exe in LocalAppData." }
           $shortcut = Join-Path $env:APPDATA "Microsoft\Windows\Start Menu\Programs\Auto Key Light.lnk"
-          if (!(Test-Path $shortcut)) { throw "The Start menu shortcut is missing." }
+          if (!(Test-Path $shortcut)) {
+            $startMenu = Join-Path $env:APPDATA "Microsoft\Windows\Start Menu"
+            Write-Host "Start menu contents:"
+            if (Test-Path $startMenu) { Get-ChildItem $startMenu -Recurse -Filter *.lnk | ForEach-Object { $_.FullName } }
+            throw "The Start menu shortcut is missing."
+          }
           $entry = Get-ChildItem "HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall" | ForEach-Object { Get-ItemProperty $_.PSPath } | Where-Object { $_.DisplayName -eq "Auto Key Light" }
           if (-not $entry) { throw "The per-user uninstall entry is missing." }
           $run = Get-ItemProperty "HKCU:\Software\Microsoft\Windows\CurrentVersion\Run" -ErrorAction SilentlyContinue
