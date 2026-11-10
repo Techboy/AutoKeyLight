@@ -22,6 +22,7 @@
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
     <Nullable>enable</Nullable>
     <UseWindowsForms>true</UseWindowsForms>
+    <UseWPF>false</UseWPF>
     <ImplicitUsings>enable</ImplicitUsings>
     <StartupObject>CamOnKeyLight.Program</StartupObject>
     <RootNamespace>CamOnKeyLight</RootNamespace>
@@ -44,4 +45,11 @@
   </ItemGroup>
 
   <Import Project="Sdk.targets" Sdk="Microsoft.NET.Sdk" />
+
+  <Target Name="DropUnusedWpfAssemblies" AfterTargets="ComputeFilesToPublish">
+    <ItemGroup>
+      <ResolvedFileToPublish Remove="@(ResolvedFileToPublish)"
+        Condition="$([System.String]::Copy('%(Filename)').StartsWith('Presentation')) or '%(Filename)' == 'ReachFramework'" />
+    </ItemGroup>
+  </Target>
 </Project>

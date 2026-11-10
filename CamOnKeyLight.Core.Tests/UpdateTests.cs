@@ -248,6 +248,7 @@ namespace CamOnKeyLight.Core.Tests
                 .Select(file => (Path.GetRelativePath(directory, file), new FileInfo(file).Length))
                 .ToList();
             Assert.Null(PackageRules.Validate(entries));
+            Assert.DoesNotContain(entries, entry => IsUnusedWpfAssembly(entry.Path));
         }
 
         [Fact]
@@ -261,6 +262,14 @@ namespace CamOnKeyLight.Core.Tests
                 .Select(file => (Path.GetRelativePath(directory, file), new FileInfo(file).Length))
                 .ToList();
             Assert.Null(LegacyPackageRules.Validate(entries));
+            Assert.DoesNotContain(entries, entry => IsUnusedWpfAssembly(entry.Path));
+        }
+
+        private static bool IsUnusedWpfAssembly(string path)
+        {
+            string name = Path.GetFileName(path);
+            return name.StartsWith("Presentation", StringComparison.OrdinalIgnoreCase)
+                || name.Equals("ReachFramework.dll", StringComparison.OrdinalIgnoreCase);
         }
 
         [Fact]

@@ -5,6 +5,12 @@
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
     <Nullable>enable</Nullable>
     <UseWindowsForms>true</UseWindowsForms>
+    <!--
+      WPF is unused. PublishTrimmed is not set: the SDK rejects it for
+      WinForms (NETSDK1175). The target below still drops WPF assemblies
+      if a self-contained publish copies the whole desktop runtime pack.
+    -->
+    <UseWPF>false</UseWPF>
     <ImplicitUsings>enable</ImplicitUsings>
     <StartupObject>CamOnKeyLight.Program</StartupObject>
     <ApplicationIcon>Resources\Icon.ico</ApplicationIcon>
@@ -51,4 +57,10 @@
       <LastGenOutput>Settings.Designer.cs</LastGenOutput>
     </None>
   </ItemGroup>
+  <Target Name="DropUnusedWpfAssemblies" AfterTargets="ComputeFilesToPublish">
+    <ItemGroup>
+      <ResolvedFileToPublish Remove="@(ResolvedFileToPublish)"
+        Condition="$([System.String]::Copy('%(Filename)').StartsWith('Presentation')) or '%(Filename)' == 'ReachFramework'" />
+    </ItemGroup>
+  </Target>
 </Project>
