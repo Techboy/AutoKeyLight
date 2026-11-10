@@ -27,6 +27,18 @@ namespace CamOnKeyLight.Core.Tests
             Assert.Equal("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", available.Package.GitHubSha256);
         }
 
+        [Fact]
+        public void AReleaseWithoutADigestIsRefused()
+        {
+            string json = Release("v1.2.3", prerelease: false, "https://github.com/Techboy/CamOnKeyLight/releases/download/v1.2.3/")
+                .Replace("\"digest\": \"sha256:" + new string('a', 64) + "\"", "\"digest\": \"\"", StringComparison.Ordinal);
+            UpdateCheck result = ReleaseParser.Parse(json, Current);
+            UpdateCheck.Unavailable unavailable = Assert.IsType<UpdateCheck.Unavailable>(result);
+            Assert.Contains("digest", unavailable.Reason, StringComparison.OrdinalIgnoreCase);
+            byte[] data = "package"u8.ToArray();
+            Assert.NotNull(Sha256Text.Verify(data, null, new string('a', 64) + "  " + UpdateSource.PackageName, data.Length));
+        }
+
         [Theory]
         [InlineData(true, false)]
         [InlineData(false, true)]

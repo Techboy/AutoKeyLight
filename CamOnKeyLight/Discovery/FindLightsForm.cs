@@ -55,7 +55,23 @@ namespace CamOnKeyLight
         protected override async void OnShown(EventArgs e)
         {
             base.OnShown(e);
-            await SearchAsync();
+            try
+            {
+                await SearchAsync();
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                try
+                {
+                    if (closed || IsDisposed || !IsHandleCreated)
+                        return;
+
+                    status.Text = "Couldn't search the network. " + ex.Message;
+                }
+                catch (ObjectDisposedException)
+                {
+                }
+            }
         }
 
         protected override void OnFormClosed(FormClosedEventArgs e)

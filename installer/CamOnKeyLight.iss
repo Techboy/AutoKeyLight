@@ -1,4 +1,6 @@
 ; Per-user installer. No admin and no code-signing certificate.
+; The program is self-contained and includes the .NET 10 runtime, so Windows
+; does not need a separate runtime installed.
 ; Installs beside the portable zip, into %LOCALAPPDATA%\Programs\CamOnKeyLight.
 ; Settings stay in %LOCALAPPDATA%\CamOnKeyLight and are not removed.
 

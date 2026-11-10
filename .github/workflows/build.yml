@@ -12,10 +12,10 @@ jobs:
   test:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-dotnet@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9 # v4.3.1
         with:
-          dotnet-version: 8.0.x
+          dotnet-version: 10.0.x
           cache: false
       - name: Test
         run: dotnet test CamOnKeyLight.Core.Tests/CamOnKeyLight.Core.Tests.csproj -c Release
@@ -26,16 +26,16 @@ jobs:
       contents: read
       actions: write
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-dotnet@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9 # v4.3.1
         with:
-          dotnet-version: 8.0.x
+          dotnet-version: 10.0.x
           cache: false
       - name: Test and build
         run: dotnet test CamOnKeyLight.sln -c Release
       - name: Package
         shell: pwsh
-        run: pwsh -NoProfile -File build/package.ps1 -Version 0.7.0
+        run: pwsh -NoProfile -File build/package.ps1 -Version 0.7.1 -InformationalVersion "0.7.1-ci.${{ github.run_number }}+${{ github.sha }}"
       - name: Install and uninstall the per-user setup
         shell: pwsh
         run: |
@@ -69,7 +69,7 @@ jobs:
           if (!(Test-Path $marker)) { throw "Uninstall removed user settings." }
           Get-Item $setup, (Join-Path $dist "CamOnKeyLight-win-x64.zip"), (Join-Path $dist "AutoKeyLight-win-x64.zip") | ForEach-Object { Write-Host ("{0} {1} bytes" -f $_.Name, $_.Length) }
       - name: Upload setup and portable zip
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: CamOnKeyLight-windows
           path: |

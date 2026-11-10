@@ -34,6 +34,7 @@ namespace CamOnKeyLight
             table.RowStyles.Add(new RowStyle(SizeType.AutoSize));
             table.RowCount = 1;
 
+            status = DialogShell.WrappingLabel("", logicalWidth);
             int row = 1;
             foreach (LightMode mode in new[] { LightMode.Auto, LightMode.On, LightMode.Off })
             {
@@ -68,7 +69,6 @@ namespace CamOnKeyLight
                 row++;
             }
 
-            status = DialogShell.WrappingLabel("", logicalWidth);
             status.Margin = new Padding(0, 12, 0, 0);
             table.RowStyles.Add(new RowStyle(SizeType.AutoSize));
             table.RowCount = row + 1;

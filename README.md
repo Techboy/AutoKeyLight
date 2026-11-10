@@ -38,7 +38,7 @@ The main window lists each light's address, description, group and status. **Add
 
 ## Requirements
 
-- 64-bit Windows 10 (version 1607 or later) or Windows 11. The .NET 8 runtime is included in the download, so you do not install it separately.
+- 64-bit Windows 10 (version 1607 or later) or Windows 11. The .NET 10 runtime is included in the download, so you do not install it separately.
 - This PC and the lights on the same local network. The app talks to each light over HTTP. The port is 9123 unless you put a different port on the address.
 - The setup program installs for the current user and does not ask for administrator approval.
 
@@ -217,7 +217,7 @@ The version in the program comes from that tag. The workflow builds the zip file
 
 ## Build
 
-The logic tests run on .NET 8, including on a machine that is not running Windows:
+The logic tests run on .NET 10, including on a machine that is not running Windows:
 
 ```bash
 dotnet test CamOnKeyLight.Core.Tests/CamOnKeyLight.Core.Tests.csproj -c Release

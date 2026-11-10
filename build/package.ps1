@@ -6,6 +6,7 @@
 param(
     [Parameter(Mandatory = $true)]
     [string]$Version,
+    [string]$InformationalVersion,
     [string]$OutputDir
 )
 
@@ -17,6 +18,9 @@ Set-Location $RepoRoot
 
 if ([string]::IsNullOrWhiteSpace($OutputDir)) {
     $OutputDir = Join-Path $RepoRoot "dist"
+}
+if ([string]::IsNullOrWhiteSpace($InformationalVersion)) {
+    $InformationalVersion = $Version
 }
 
 function Invoke-Native {
@@ -59,6 +63,8 @@ $publishArgs = @(
     "-r", "win-x64",
     "--self-contained", "true",
     "-p:Version=$Version",
+    "-p:InformationalVersion=$InformationalVersion",
+    "-p:IncludeSourceRevisionInInformationalVersion=false",
     "-p:DebugType=none",
     "-p:DebugSymbols=false"
 )
@@ -115,10 +121,17 @@ finally {
     $legacyArchive.Dispose()
 }
 
+$innoUrl = "https://github.com/jrsoftware/issrc/releases/download/is-6_4_3/innosetup-6.4.3.exe"
+$innoSha256 = "f3c42116542c4cc57263c5ba6c4feabfc49fe771f2f98a79d2f7628b8762723b"
 $innoSetup = Join-Path $work "innosetup-6.4.3.exe"
 $innoDir = Join-Path $work "innosetup"
 if (!(Test-Path (Join-Path $innoDir "ISCC.exe"))) {
-    Invoke-WebRequest -Uri "https://github.com/jrsoftware/issrc/releases/download/is-6_4_3/innosetup-6.4.3.exe" -OutFile $innoSetup
+    Invoke-WebRequest -Uri $innoUrl -OutFile $innoSetup
+    $downloaded = (Get-FileHash -Algorithm SHA256 $innoSetup).Hash.ToLowerInvariant()
+    if ($downloaded -ne $innoSha256) {
+        Remove-Item $innoSetup -Force
+        throw "The Inno Setup download did not match the pinned SHA-256."
+    }
     $installer = Start-Process -FilePath $innoSetup -ArgumentList "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART", "/DIR=$innoDir" -Wait -PassThru
     if ($installer.ExitCode -ne 0) {
         throw "The Inno Setup installer failed with exit code $($installer.ExitCode)."
