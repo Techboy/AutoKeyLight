@@ -1,4 +1,4 @@
-# AutoKeyLight
+# Cam On Key Light
 
 Automatically turns on and off your Elgato lights when you turn on and off your webcam.
 
@@ -10,15 +10,15 @@ Automatically turns on and off your Elgato lights when you turn on and off your 
 
 Most rooms light you badly for video. A window behind you leaves your face in shadow, and overhead lights cast harsh shadows. A Key Light set up in front of you gives even, soft light on your face, so you look clear and natural on Teams, Zoom, Google Meet and other calls.
 
-## What AutoKeyLight does
+## What Cam On Key Light does
 
-You shouldn't have to remember to switch your lights on before every call and off again afterwards. AutoKeyLight runs in the Windows system tray and watches for any app using your webcam. When a call turns your camera on, it turns your lights on. When the camera goes off, it turns them off again after a short delay. You can still switch them on or off by hand from the tray at any time.
+You shouldn't have to remember to switch your lights on before every call and off again afterwards. Cam On Key Light runs in the Windows system tray and watches for any app using your webcam. When a call turns your camera on, it turns your lights on. When the camera goes off, it turns them off again after a short delay. You can still switch them on or off by hand from the tray at any time.
 
 ## Get cashback on an Elgato light
 
 Buying an Elgato light? Sign up through my [TopCashback referral link](https://www.topcashback.co.uk/ref/techboy) to get cashback on your purchase.
 
-![AutoKeyLight main window](docs/autokeylight-window.png)
+![Cam On Key Light main window](docs/autokeylight-window.png)
 
 The app will try finding your lights IPs from an existing Elgato Control Center installation. If that fails, please add them manually.
 
@@ -30,9 +30,9 @@ To find your keylight IP:
 
 If you know your way around your router, you could get the lights fixed IPs to guarantee reliability.
 
-This fork adds appearance, light control, shortcuts, per-light status, light discovery, quiet hours, per-app camera rules, light groups, notifications, and updates from **Techboy/AutoKeyLight** stable releases. It does not change Windows networking, VPN, routes, or company security software.
+This fork adds appearance, light control, shortcuts, per-light status, light discovery, quiet hours, per-app camera rules, light groups, notifications, and updates from **Techboy/CamOnKeyLight** stable releases. It does not change Windows networking, VPN, routes, or company security software.
 
-AutoKeyLight is MIT licensed. Copyright (c) 2022 Gabriel Garcia. See [LICENSE](LICENSE).
+Cam On Key Light is based on [astutejoe/AutoKeyLight](https://github.com/astutejoe/AutoKeyLight). It is MIT licensed. Copyright (c) 2022 Gabriel Garcia. See [LICENSE](LICENSE).
 
 ## Light control
 
@@ -89,25 +89,25 @@ The optional **Group** on a light shows in the list and on the tray. The tray ca
 
 ### Which file do I download?
 
-- **`AutoKeyLight-Setup.exe`**: download this one. It's the normal installer for most people.
-- **`AutoKeyLight-win-x64.zip`**: the portable version. Unzip it and run it without installing. The automatic updater also uses this file.
+- **`CamOnKeyLight-Setup.exe`**: download this one. It's the normal installer for most people.
+- **`CamOnKeyLight-win-x64.zip`**: the portable version. Unzip it and run it without installing. The automatic updater also uses this file.
 - **`.sha256` files**: checksums for checking a download. You can ignore them.
 
 The build is not code-signed. There is no paid certificate. Windows SmartScreen may say "Windows protected your PC" the first time you open the installer or the program. Choose **More info**, then **Run anyway**.
 
 ### Per-user installer
 
-1. Open the latest stable release: https://github.com/Techboy/AutoKeyLight/releases/latest
-2. Download `AutoKeyLight-Setup.exe`. `AutoKeyLight-Setup.exe.sha256` is the checksum for that file.
-3. Run the setup. It does not ask for administrator approval. It installs to `%LOCALAPPDATA%\Programs\AutoKeyLight`, adds an **Auto Key Light** shortcut to your Start menu, and adds a per-user uninstall entry in Windows Settings.
-4. If Auto Key Light is already running, the setup asks to close it before replacing the program files.
-5. Uninstall removes the program, the Start menu shortcut, and a sign-in startup entry that still points at this install. It leaves `%LOCALAPPDATA%\AutoKeyLight` in place, which is where your settings and update backup live.
+1. Open the latest stable release: https://github.com/Techboy/CamOnKeyLight/releases/latest
+2. Download `CamOnKeyLight-Setup.exe`. `CamOnKeyLight-Setup.exe.sha256` is the checksum for that file.
+3. Run the setup. It does not ask for administrator approval. It installs to `%LOCALAPPDATA%\Programs\CamOnKeyLight`, adds a **Cam On Key Light** shortcut to your Start menu, and adds a per-user uninstall entry in Windows Settings. If an older Auto Key Light install is there, setup closes it, removes that install, its Start menu shortcut, and its Apps & features entry, and keeps your settings.
+4. If Cam On Key Light or Auto Key Light is already running, the setup asks to close it before replacing the program files.
+5. Uninstall removes the program, the Start menu shortcut, and a sign-in startup entry that still points at this install. It leaves `%LOCALAPPDATA%\CamOnKeyLight` in place, which is where your settings and update backup live.
 
 ### Portable zip
 
 The zip is still published for people who want a folder they can move.
 
-1. Download `AutoKeyLight-win-x64.zip` and, if you want to check it, `AutoKeyLight-win-x64.zip.sha256`.
+1. Download `CamOnKeyLight-win-x64.zip` and, if you want to check it, `CamOnKeyLight-win-x64.zip.sha256`.
 2. Extract it to a normal folder you can write to. Do not run it from inside the zip, and do not put it in `C:\Windows`.
 3. The .NET runtime is included.
 
@@ -115,32 +115,35 @@ The automatic updater always downloads that zip, whether you installed with setu
 
 ## Settings
 
-Light addresses, descriptions, groups, delays, theme, light mode, shortcuts, quiet hours, camera-app rules, notification choices, and the update checkbox are stored in `%LOCALAPPDATA%\AutoKeyLight\user-settings.json`. That file is outside the program folder, so installing, updating, or moving the program does not erase it. A settings file from an older version still loads; the new choices use their defaults.
+Light addresses, descriptions, groups, delays, theme, light mode, shortcuts, quiet hours, camera-app rules, notification choices, and the update checkbox are stored in `%LOCALAPPDATA%\CamOnKeyLight\user-settings.json`. That file is outside the program folder, so installing, updating, or moving the program does not erase it. A settings file from an older version still loads; the new choices use their defaults.
 
-The first time this version starts, it copies an existing `user.config` from the older per-folder settings location when that file still has your lights. A saved off delay of 0 stays 0. Descriptions start blank until you edit them.
+The first time this version starts, if that file is missing and `%LOCALAPPDATA%\AutoKeyLight\user-settings.json` exists, it copies the old file and leaves the original in place. It also copies an existing `user.config` from the older per-folder settings location when that file still has your lights. A saved off delay of 0 stays 0. Descriptions start blank until you edit them.
 
 ## Sign-in
 
-**Start when I sign in** follows the current user's Startup apps list (`HKCU\...\Run`). It runs after you sign in. It does not run before Windows login, and it does not need administrator approval. The command is stored in quotes under the name `AutoKeyLight`. An older `MyApp` entry that pointed at `AutoKeyLight.exe` is moved to that name and updated to the copy you are running, so a previous folder is not launched after you move or install the app.
+**Start when I sign in** follows the current user's Startup apps list (`HKCU\...\Run`). It runs after you sign in. It does not run before Windows login, and it does not need administrator approval. The command is stored in quotes under the name `CamOnKeyLight`. An older `AutoKeyLight` or `MyApp` entry that pointed at this app is moved to that name and updated to the copy you are running, so a previous folder is not launched after you move or install the app. If sign-in startup was off, it stays off.
 
 ## Updates
 
-Installed copies check only **stable** releases of **Techboy/AutoKeyLight**. They do not update from the upstream `astutejoe/AutoKeyLight` project, and they do not use a token or other credential.
+Installed copies check only **stable** releases of **Techboy/CamOnKeyLight** and download `CamOnKeyLight-win-x64.zip`. They do not update from the upstream [astutejoe/AutoKeyLight](https://github.com/astutejoe/AutoKeyLight) project, and they do not use a token or other credential. A copy still on 0.6.0 looks for `AutoKeyLight-win-x64.zip` on the previous repository name; that file is also attached to the release so it can move across.
 
 **Install updates automatically** is on by default. Uncheck it to stop background checks and unattended installs. **Check for updates** still works, and **Install update** appears only after a package has been downloaded and checked.
 
 An update is not applied while the webcam is on. Automatic install also waits until the camera has been off for 15 seconds. If GitHub cannot be reached, the app keeps the version you already have and says so.
 
-A download is accepted only from this repository's GitHub release. The zip is checked against GitHub's asset digest, when GitHub provides one, and against the published SHA-256 file. The zip is then extracted with path checks. The previous program files are copied to `%LOCALAPPDATA%\AutoKeyLight\updates\backup` before they are replaced, and restored if the copy fails or the new program's version does not match the release. The app restarts into the tray after a successful update.
+A download is accepted only from this repository's GitHub release. The zip is checked against GitHub's asset digest, when GitHub provides one, and against the published SHA-256 file. The zip is then extracted with path checks. The previous program files are copied to `%LOCALAPPDATA%\CamOnKeyLight\updates\backup` before they are replaced, and restored if the copy fails or the new program's version does not match the release. The app restarts into the tray after a successful update.
 
 ## Releasing a new version
 
-This uses the free `windows-latest` runner on this public repository. It does not use a paid runner, a code-signing certificate, an Actions cache, or a stored Actions artifact. The only files kept are the two release assets below.
+This uses the free `windows-latest` runner on this public repository. It does not use a paid runner, a code-signing certificate, an Actions cache, or a stored Actions artifact.
 
-1. Pick the next version, for example `1.2.3`.
-2. On GitHub, create a release in **Techboy/AutoKeyLight**. Tag it `v1.2.3`. Leave it as a normal release, not a pre-release and not a draft.
-3. Publish the release. The release workflow builds the Windows app and attaches `AutoKeyLight-win-x64.zip` and `AutoKeyLight-win-x64.zip.sha256`.
-4. Wait until the release lists `AutoKeyLight-win-x64.zip`, `AutoKeyLight-win-x64.zip.sha256`, `AutoKeyLight-Setup.exe`, and `AutoKeyLight-Setup.exe.sha256`. Installed copies with automatic updates enabled download the zip. People installing for the first time can run the setup program.
+For 0.7.0, publish the release while the repository is still named **Techboy/AutoKeyLight**, then rename it to **Techboy/CamOnKeyLight**. v0.6.0 only accepts download URLs under `/Techboy/AutoKeyLight/releases/download/`. GitHub's release API uses the current repository name in those URLs, so renaming first would make v0.6.0 refuse the package.
+
+1. Pick the next version, for example `0.7.0`.
+2. On GitHub, create a release in **Techboy/AutoKeyLight**. Tag it `v0.7.0`. Leave it as a normal release, not a pre-release and not a draft.
+3. Publish the release. The release workflow attaches `CamOnKeyLight-win-x64.zip`, `CamOnKeyLight-win-x64.zip.sha256`, `AutoKeyLight-win-x64.zip`, `AutoKeyLight-win-x64.zip.sha256`, `CamOnKeyLight-Setup.exe`, and `CamOnKeyLight-Setup.exe.sha256`.
+4. Wait until those files are listed. People installing for the first time run the setup program. Copies already on 0.7.0 or later download `CamOnKeyLight-win-x64.zip`. Copies still on 0.6.0 download `AutoKeyLight-win-x64.zip`.
+5. Rename the repository to **Techboy/CamOnKeyLight**. GitHub redirects the old repository URLs. Do this after the 0.6.0 copies you care about have updated, or give those PCs the new setup program.
 
 The version in the program comes from that tag. The workflow builds the zip and the setup from the same folder. Do not attach those files by hand unless the workflow failed; the app expects the checksum and GitHub's digest to describe the same zip.
 
@@ -149,11 +152,11 @@ The version in the program comes from that tag. The workflow builds the zip and 
 The logic tests run on .NET 8:
 
 ```bash
-dotnet test AutoKeyLight.Core.Tests/AutoKeyLight.Core.Tests.csproj -c Release
+dotnet test CamOnKeyLight.Core.Tests/CamOnKeyLight.Core.Tests.csproj -c Release
 ```
 
 The Windows app itself builds on Windows:
 
 ```powershell
-dotnet publish AutoKeyLight/AutoKeyLight.csproj -c Release -r win-x64 --self-contained true
+dotnet publish CamOnKeyLight/CamOnKeyLight.csproj -c Release -r win-x64 --self-contained true
 ```

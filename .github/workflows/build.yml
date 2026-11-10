@@ -18,7 +18,7 @@ jobs:
           dotnet-version: 8.0.x
           cache: false
       - name: Test
-        run: dotnet test AutoKeyLight.Core.Tests/AutoKeyLight.Core.Tests.csproj -c Release
+        run: dotnet test CamOnKeyLight.Core.Tests/CamOnKeyLight.Core.Tests.csproj -c Release
 
   windows:
     runs-on: windows-latest
@@ -32,64 +32,64 @@ jobs:
           dotnet-version: 8.0.x
           cache: false
       - name: Test and build
-        run: dotnet test AutoKeyLight.sln -c Release
+        run: dotnet test CamOnKeyLight.sln -c Release
       - name: Publish Windows app and per-user installer
         shell: pwsh
         run: |
           $out = Join-Path $env:RUNNER_TEMP "autokeylight-publish"
-          dotnet publish AutoKeyLight/AutoKeyLight.csproj -c Release -r win-x64 --self-contained true -p:Version=1.0.0 -p:DebugType=none -p:DebugSymbols=false -o $out
+          dotnet publish CamOnKeyLight/CamOnKeyLight.csproj -c Release -r win-x64 --self-contained true -p:Version=0.7.0 -p:DebugType=none -p:DebugSymbols=false -o $out
           Copy-Item LICENSE (Join-Path $out "LICENSE")
           Copy-Item README.md (Join-Path $out "README.md")
-          if (!(Test-Path (Join-Path $out "AutoKeyLight.exe"))) { throw "AutoKeyLight.exe was not published." }
+          if (!(Test-Path (Join-Path $out "CamOnKeyLight.exe"))) { throw "CamOnKeyLight.exe was not published." }
           $env:AUTOKEYLIGHT_PUBLISH_DIR = $out
-          dotnet test AutoKeyLight.Core.Tests/AutoKeyLight.Core.Tests.csproj -c Release --filter PublishedOutputMatchesPackageRules
+          dotnet test CamOnKeyLight.Core.Tests/CamOnKeyLight.Core.Tests.csproj -c Release --filter PublishedOutputMatchesPackageRules
           $innoSetup = Join-Path $env:RUNNER_TEMP "innosetup-6.4.3.exe"
           $innoDir = Join-Path $env:RUNNER_TEMP "innosetup"
           Invoke-WebRequest -Uri "https://github.com/jrsoftware/issrc/releases/download/is-6_4_3/innosetup-6.4.3.exe" -OutFile $innoSetup
           Start-Process -FilePath $innoSetup -ArgumentList "/VERYSILENT","/SUPPRESSMSGBOXES","/NORESTART","/DIR=$innoDir" -Wait
-          & (Join-Path $innoDir "ISCC.exe") "/DMyAppVersion=1.0.0" "/DPublishDir=$out" "installer\AutoKeyLight.iss"
-          $builtSetup = Join-Path (Resolve-Path "installer") "AutoKeyLight-Setup.exe"
+          & (Join-Path $innoDir "ISCC.exe") "/DMyAppVersion=0.7.0" "/DPublishDir=$out" "installer\CamOnKeyLight.iss"
+          $builtSetup = Join-Path (Resolve-Path "installer") "CamOnKeyLight-Setup.exe"
           if (!(Test-Path $builtSetup)) { throw "The per-user installer was not created." }
           $dist = Join-Path $env:GITHUB_WORKSPACE "dist"
           New-Item -ItemType Directory -Force -Path $dist | Out-Null
-          $setup = Join-Path $dist "AutoKeyLight-Setup.exe"
+          $setup = Join-Path $dist "CamOnKeyLight-Setup.exe"
           Copy-Item $builtSetup $setup
-          $zip = Join-Path $dist "AutoKeyLight-win-x64.zip"
+          $zip = Join-Path $dist "CamOnKeyLight-win-x64.zip"
           if (Test-Path $zip) { Remove-Item $zip }
           Add-Type -AssemblyName System.IO.Compression.FileSystem
           [System.IO.Compression.ZipFile]::CreateFromDirectory($out, $zip)
-          $dest = Join-Path $env:LOCALAPPDATA "Programs\AutoKeyLight"
+          $dest = Join-Path $env:LOCALAPPDATA "Programs\CamOnKeyLight"
           $uninstaller = Join-Path $dest "unins000.exe"
           if (Test-Path $uninstaller) { Start-Process -FilePath $uninstaller -ArgumentList "/VERYSILENT","/NORESTART" -Wait }
           Start-Process -FilePath $setup -ArgumentList "/VERYSILENT","/SUPPRESSMSGBOXES","/NORESTART" -Wait
-          if (!(Test-Path (Join-Path $dest "AutoKeyLight.exe"))) { throw "The installer did not place AutoKeyLight.exe in LocalAppData." }
-          $shortcut = Join-Path $env:APPDATA "Microsoft\Windows\Start Menu\Programs\Auto Key Light.lnk"
+          if (!(Test-Path (Join-Path $dest "CamOnKeyLight.exe"))) { throw "The installer did not place CamOnKeyLight.exe in LocalAppData." }
+          $shortcut = Join-Path $env:APPDATA "Microsoft\Windows\Start Menu\Programs\Cam On Key Light.lnk"
           if (!(Test-Path $shortcut)) {
             $startMenu = Join-Path $env:APPDATA "Microsoft\Windows\Start Menu"
             Write-Host "Start menu contents:"
             if (Test-Path $startMenu) { Get-ChildItem $startMenu -Recurse -Filter *.lnk | ForEach-Object { $_.FullName } }
             throw "The Start menu shortcut is missing."
           }
-          $entry = Get-ChildItem "HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall" | ForEach-Object { Get-ItemProperty $_.PSPath } | Where-Object { $_.DisplayName -eq "Auto Key Light" }
+          $entry = Get-ChildItem "HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall" | ForEach-Object { Get-ItemProperty $_.PSPath } | Where-Object { $_.DisplayName -eq "Cam On Key Light" }
           if (-not $entry) { throw "The per-user uninstall entry is missing." }
           $run = Get-ItemProperty "HKCU:\Software\Microsoft\Windows\CurrentVersion\Run" -ErrorAction SilentlyContinue
-          if ($run -and $run.AutoKeyLight) { throw "The installer turned on sign-in startup by itself." }
-          $settingsDir = Join-Path $env:LOCALAPPDATA "AutoKeyLight"
+          if ($run -and $run.CamOnKeyLight) { throw "The installer turned on sign-in startup by itself." }
+          $settingsDir = Join-Path $env:LOCALAPPDATA "CamOnKeyLight"
           New-Item -ItemType Directory -Force -Path $settingsDir | Out-Null
           $marker = Join-Path $settingsDir "user-settings.json"
           Set-Content -Path $marker -Value "{}" -Encoding ascii
           Start-Process -FilePath $uninstaller -ArgumentList "/VERYSILENT","/NORESTART" -Wait
           $deadline = (Get-Date).AddSeconds(30)
-          while ((Test-Path (Join-Path $dest "AutoKeyLight.exe")) -and (Get-Date) -lt $deadline) { Start-Sleep -Seconds 1 }
-          if (Test-Path (Join-Path $dest "AutoKeyLight.exe")) { throw "Uninstall left the program in place." }
+          while ((Test-Path (Join-Path $dest "CamOnKeyLight.exe")) -and (Get-Date) -lt $deadline) { Start-Sleep -Seconds 1 }
+          if (Test-Path (Join-Path $dest "CamOnKeyLight.exe")) { throw "Uninstall left the program in place." }
           if (!(Test-Path $marker)) { throw "Uninstall removed user settings." }
           Get-Item $setup, $zip | ForEach-Object { Write-Host ("{0} {1} bytes" -f $_.Name, $_.Length) }
       - name: Upload setup and portable zip
         uses: actions/upload-artifact@v4
         with:
-          name: AutoKeyLight-windows
+          name: CamOnKeyLight-windows
           path: |
-            dist/AutoKeyLight-Setup.exe
-            dist/AutoKeyLight-win-x64.zip
+            dist/CamOnKeyLight-Setup.exe
+            dist/CamOnKeyLight-win-x64.zip
           retention-days: 7
           if-no-files-found: error
