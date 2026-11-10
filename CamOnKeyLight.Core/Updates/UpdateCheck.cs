@@ -150,13 +150,12 @@ namespace CamOnKeyLight.Core
                 return new UpdateCheck.Unavailable("The checksum URL is not a Techboy/CamOnKeyLight release asset.");
 
             string? digestField = package["digest"]?.GetValue<string>();
-            string? digest = null;
-            if (!string.IsNullOrWhiteSpace(digestField))
-            {
-                digest = Sha256Text.ParseGitHubDigest(digestField);
-                if (digest == null)
-                    return new UpdateCheck.Unavailable("The release digest is not a SHA-256 digest.");
-            }
+            if (string.IsNullOrWhiteSpace(digestField))
+                return new UpdateCheck.Unavailable("The release does not include a SHA-256 digest, so the update was not installed.");
+
+            string? digest = Sha256Text.ParseGitHubDigest(digestField);
+            if (digest == null)
+                return new UpdateCheck.Unavailable("The release digest is not a SHA-256 digest.");
 
             long? size = package["size"]?.GetValue<long>();
             return new UpdateCheck.Available(new UpdatePackage(version, tag, packageUri, size, digest, checksumUri));

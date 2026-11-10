@@ -473,6 +473,37 @@ namespace CamOnKeyLight.Core
                 || fileName.Equals("AutoKeyLight.runtimeconfig.json", StringComparison.OrdinalIgnoreCase);
         }
 
+        public static bool IsRetiredInstallDirectory(string localAppData, string? directory)
+        {
+            if (string.IsNullOrWhiteSpace(directory))
+                return false;
+
+            string expected = Path.GetFullPath(SettingsLocations.LegacyInstalledAppDirectory(localAppData));
+            string candidate;
+            try
+            {
+                candidate = Path.GetFullPath(directory);
+            }
+            catch (Exception ex) when (ex is ArgumentException or NotSupportedException or PathTooLongException)
+            {
+                return false;
+            }
+
+            if (!string.Equals(expected, candidate, StringComparison.OrdinalIgnoreCase))
+                return false;
+
+            DirectoryInfo? current = new DirectoryInfo(candidate);
+            while (current != null)
+            {
+                if (current.Exists && current.Attributes.HasFlag(FileAttributes.ReparsePoint))
+                    return false;
+
+                current = current.Parent;
+            }
+
+            return true;
+        }
+
         public static bool TryParseRetirement(string[] args, out RetirementRequest request)
         {
             request = new RetirementRequest(0, "");

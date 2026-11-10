@@ -68,7 +68,10 @@ namespace CamOnKeyLight.Core
             if (declaredSize is long size && size != data.LongLength)
                 return "The download size does not match the release.";
 
-            if (!string.IsNullOrWhiteSpace(githubDigestField) && ParseGitHubDigest(githubDigestField) == null)
+            if (string.IsNullOrWhiteSpace(githubDigestField))
+                return "The release does not include a SHA-256 digest.";
+
+            if (ParseGitHubDigest(githubDigestField) == null)
                 return "The release digest is not a SHA-256 digest.";
 
             if (!TryParseChecksumFile(checksumFileText, out string checksumHex))
@@ -345,13 +348,116 @@ namespace CamOnKeyLight.Core
             try
             {
                 FolderCopy.CopyContents(source, destination);
+                RemoveStale(source, destination);
             }
             catch
             {
                 if (Directory.Exists(backup))
+                {
                     FolderCopy.CopyContents(backup, destination);
+                    RemoveStale(backup, destination);
+                }
+
                 throw;
             }
+        }
+
+        public static void RemoveStale(string referenceRoot, string destination)
+        {
+            string destFull = Path.GetFullPath(destination);
+            DirectoryInfo root = new DirectoryInfo(destFull);
+            if (root.Exists && root.Attributes.HasFlag(FileAttributes.ReparsePoint))
+                throw new InvalidOperationException("Refusing to update a link.");
+
+            HashSet<string> keep = new HashSet<string>(RelativeFiles(referenceRoot), StringComparer.OrdinalIgnoreCase);
+            foreach (string relative in RelativeFiles(destination).OrderByDescending(path => path.Length))
+            {
+                if (keep.Contains(relative) || IsProtected(relative))
+                    continue;
+
+                string full = Path.GetFullPath(Path.Combine(destFull, relative.Replace('/', Path.DirectorySeparatorChar)));
+                if (!PackageRules.IsInside(full, destFull))
+                    continue;
+
+                FileInfo file = new FileInfo(full);
+                if (!file.Exists || file.Attributes.HasFlag(FileAttributes.ReparsePoint))
+                    continue;
+
+                file.Delete();
+            }
+
+            RemoveEmptyDirectories(root, destFull);
+        }
+
+        private static bool IsProtected(string relative)
+        {
+            if (relative.Equals("user-settings.json", StringComparison.OrdinalIgnoreCase))
+                return true;
+
+            return relative.Equals("logs", StringComparison.OrdinalIgnoreCase)
+                || relative.StartsWith("logs/", StringComparison.OrdinalIgnoreCase);
+        }
+
+        private static List<string> RelativeFiles(string rootPath)
+        {
+            List<string> files = new List<string>();
+            DirectoryInfo root = new DirectoryInfo(rootPath);
+            if (!root.Exists)
+                return files;
+
+            if (root.Attributes.HasFlag(FileAttributes.ReparsePoint))
+                throw new InvalidOperationException("Refusing to read a link.");
+
+            Walk(root, root.FullName, files);
+            return files;
+        }
+
+        private static void Walk(DirectoryInfo directory, string rootFull, List<string> files)
+        {
+            foreach (FileInfo file in directory.EnumerateFiles())
+            {
+                if (file.Attributes.HasFlag(FileAttributes.ReparsePoint))
+                    continue;
+
+                string full = Path.GetFullPath(file.FullName);
+                if (!PackageRules.IsInside(full, rootFull))
+                    continue;
+
+                files.Add(Relative(rootFull, full));
+            }
+
+            foreach (DirectoryInfo child in directory.EnumerateDirectories())
+            {
+                if (child.Attributes.HasFlag(FileAttributes.ReparsePoint))
+                    continue;
+
+                Walk(child, rootFull, files);
+            }
+        }
+
+        private static string Relative(string rootFull, string full)
+        {
+            string prefix = rootFull.TrimEnd(Path.DirectorySeparatorChar) + Path.DirectorySeparatorChar;
+            string tail = full.StartsWith(prefix, StringComparison.OrdinalIgnoreCase) ? full[prefix.Length..] : full;
+            return tail.Replace('\\', '/');
+        }
+
+        private static void RemoveEmptyDirectories(DirectoryInfo directory, string destFull)
+        {
+            if (!directory.Exists || directory.Attributes.HasFlag(FileAttributes.ReparsePoint))
+                return;
+
+            foreach (DirectoryInfo child in directory.EnumerateDirectories())
+                RemoveEmptyDirectories(child, destFull);
+
+            if (string.Equals(Path.GetFullPath(directory.FullName), destFull, StringComparison.OrdinalIgnoreCase))
+                return;
+
+            if (IsProtected(Relative(destFull, Path.GetFullPath(directory.FullName))))
+                return;
+
+            if (!directory.EnumerateFileSystemInfos().Any())
+                directory.Delete();
         }
     }
 

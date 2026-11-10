@@ -225,7 +225,10 @@ namespace CamOnKeyLight.Core
 
         public static string LightsUrl(string address)
         {
-            return "http://" + Host(address) + "/elgato/lights";
+            if (!LightAddressRules.TryCreateUrl(address, out string url, out string? error))
+                throw new ArgumentException(error ?? "Use an IP address or host name, with an optional port.", nameof(address));
+
+            return url;
         }
 
         public static string PutBody(bool turnOn)
@@ -249,6 +252,9 @@ namespace CamOnKeyLight.Core
                     continue;
 
                 string trimmed = address.Trim();
+                if (!LightAddressRules.TryParse(trimmed, out _, out _, out _))
+                    continue;
+
                 targets.Add(new LightTarget(trimmed, Host(trimmed), power));
             }
 

@@ -9,7 +9,7 @@ namespace CamOnKeyLight
     {
         private const int WmHotkey = 0x0312;
 
-        private readonly HttpClient httpClient = new HttpClient();
+        private static readonly HttpClient httpClient = CreateLightClient();
         private readonly Icon trayIconLit;
         private readonly Icon trayIconUnlit;
         private readonly LightModeController controller = new LightModeController(DateTime.UtcNow);
@@ -45,7 +45,7 @@ namespace CamOnKeyLight
             InitializeComponent();
             trayIconLit = Icon.FromHandle(Properties.Resources.TrayIconLit.GetHicon());
             trayIconUnlit = Icon.FromHandle(Properties.Resources.TrayIconUnlit.GetHicon());
-            updateTimer = new System.Windows.Forms.Timer(components);
+            updateTimer = new System.Windows.Forms.Timer(components!);
             updateTimer.Tick += updateTimer_Tick;
             updateCoordinator = new UpdateCoordinator(
                 CurrentVersion(),
@@ -57,7 +57,7 @@ namespace CamOnKeyLight
                 niTray.Visible = false;
                 Application.Exit();
             };
-            ToolTip tips = new ToolTip(components);
+            ToolTip tips = new ToolTip(components!);
             tips.SetToolTip(numUpDownOff, "Automatic mode only. After the camera turns off, wait this long before turning the lights off. If the camera comes back during the wait, the lights stay on. Manual Off is immediate. New installs use 1500 ms; a value you already saved is kept.");
             tips.SetToolTip(btnRetry, "Check the lights again and show whether each one responded.");
             tips.SetToolTip(btnFindLights, "Search this network for Elgato lights and add the ones that are not already listed.");
@@ -372,16 +372,57 @@ namespace CamOnKeyLight
                 _ = PutBodyAsync(target.Address, body);
         }
 
+        private static HttpClient CreateLightClient()
+        {
+            SocketsHttpHandler handler = new SocketsHttpHandler
+            {
+                AllowAutoRedirect = false,
+                ConnectTimeout = LightTiming.LightRequestTimeout
+            };
+            return new HttpClient(handler, disposeHandler: true)
+            {
+                Timeout = LightTiming.LightRequestTimeout
+            };
+        }
+
         private async Task PutBodyAsync(string address, string body)
         {
+            if (!LightAddressRules.TryCreateUrl(address, out string url, out string? problem))
+            {
+                ReportLightFailure(address, LightLinkState.InvalidAddress, problem ?? LightDiagnostics.Invalid(address), "put");
+                return;
+            }
+
             try
             {
+                using CancellationTokenSource timeout = new CancellationTokenSource(LightTiming.LightRequestTimeout);
                 using StringContent content = new StringContent(body, Encoding.UTF8, "application/json");
-                await httpClient.PutAsync(LightEndpoint.LightsUrl(address), content);
+                using HttpResponseMessage response = await httpClient.PutAsync(url, content, timeout.Token);
+                if (!response.IsSuccessStatusCode)
+                    ReportLightFailure(address, LightLinkState.Unreachable, LightDiagnostics.HttpFailure(address, (int)response.StatusCode), "put");
             }
-            catch
+            catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or OperationCanceledException)
             {
+                ReportLightFailure(address, LightLinkState.Unreachable, LightDiagnostics.Unreachable(address), "put", ex);
             }
+        }
+
+        private void ReportLightFailure(string address, LightLinkState state, string detail, string operation, Exception? error = null)
+        {
+            void Show()
+            {
+                if (IsDisposed)
+                    return;
+
+                board.Report(address, state, detail);
+                ShowLightRows();
+            }
+
+            AppLog.Write(address, operation, error == null ? detail : error.GetType().Name + " " + detail);
+            if (InvokeRequired)
+                BeginInvoke(Show);
+            else
+                Show();
         }
 
         private void RefreshAll(bool userInitiated)
@@ -414,9 +455,15 @@ namespace CamOnKeyLight
         {
             LightLinkState state = LightLinkState.Unreachable;
             string detail = LightDiagnostics.Unreachable(address);
-            try
+            if (!LightAddressRules.TryCreateUrl(address, out string url, out string? problem))
             {
-                using HttpResponseMessage response = await httpClient.GetAsync(LightEndpoint.LightsUrl(address), cts.Token);
+                state = LightLinkState.InvalidAddress;
+                detail = problem ?? LightDiagnostics.Invalid(address);
+                AppLog.Write(address, "check", detail);
+            }
+            else try
+            {
+                using HttpResponseMessage response = await httpClient.GetAsync(url, cts.Token);
                 if (!response.IsSuccessStatusCode)
                 {
                     detail = LightDiagnostics.HttpFailure(address, (int)response.StatusCode);
@@ -436,14 +483,17 @@ namespace CamOnKeyLight
                     }
                 }
             }
-            catch (OperationCanceledException)
+            catch (OperationCanceledException ex)
             {
+                AppLog.Write(address, "check", ex.GetType().Name + " " + detail);
             }
-            catch (HttpRequestException)
+            catch (HttpRequestException ex)
             {
+                AppLog.Write(address, "check", ex.GetType().Name + " " + detail);
             }
-            catch
+            catch (Exception ex)
             {
+                AppLog.Write(address, "check", ex.GetType().Name + " " + detail);
             }
 
             void Finish()
@@ -828,6 +878,9 @@ namespace CamOnKeyLight
 
         private void lvLights_DrawColumnHeader(object sender, DrawListViewColumnHeaderEventArgs e)
         {
+            if (e.Graphics == null)
+                return;
+
             Color back = palette?.ButtonBackground.ToColor() ?? SystemColors.Control;
             Color fore = palette?.Foreground.ToColor() ?? SystemColors.ControlText;
             Color line = palette?.Border.ToColor() ?? SystemColors.ControlDark;
@@ -845,6 +898,9 @@ namespace CamOnKeyLight
 
         private void lvLights_DrawSubItem(object sender, DrawListViewSubItemEventArgs e)
         {
+            if (e.Item == null || e.Graphics == null)
+                return;
+
             bool selected = e.Item.Selected;
             Color back = selected
                 ? palette?.MenuHighlight.ToColor() ?? SystemColors.Highlight

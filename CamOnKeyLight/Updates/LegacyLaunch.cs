@@ -78,8 +78,13 @@ namespace CamOnKeyLight
                     {
                     }
 
-                    string uninstaller = Path.Combine(retirement.Directory, "unins000.exe");
-                    if (File.Exists(uninstaller))
+                    string local = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
+                    if (!InstallHandoff.IsRetiredInstallDirectory(local, retirement.Directory))
+                        return;
+
+                    string uninstaller = Path.Combine(Path.GetFullPath(retirement.Directory), "unins000.exe");
+                    FileInfo uninstallerInfo = new FileInfo(uninstaller);
+                    if (uninstallerInfo.Exists && !uninstallerInfo.Attributes.HasFlag(FileAttributes.ReparsePoint))
                     {
                         using Process? removed = Process.Start(new ProcessStartInfo
                         {

@@ -7,7 +7,8 @@ namespace CamOnKeyLight.Core
         On,
         Off,
         Unreachable,
-        UnexpectedReply
+        UnexpectedReply,
+        InvalidAddress
     }
 
     public enum LightSummaryKind
@@ -27,6 +28,11 @@ namespace CamOnKeyLight.Core
         public static string Unreachable(string address)
         {
             return "Can't reach " + address + ". The light did not respond.";
+        }
+
+        public static string Invalid(string address)
+        {
+            return address + " is not a valid light address. Use an IP address or host name, and an optional port.";
         }
 
         public static string Unexpected(string address)
@@ -57,6 +63,7 @@ namespace CamOnKeyLight.Core
                 LightLinkState.Off => "Off",
                 LightLinkState.Unreachable => "Unreachable",
                 LightLinkState.UnexpectedReply => "Unexpected reply",
+                LightLinkState.InvalidAddress => "Invalid address",
                 LightLinkState.Checking => "Checking…",
                 _ => "Not checked"
             };
@@ -124,6 +131,16 @@ namespace CamOnKeyLight.Core
             return entry.Attempt;
         }
 
+        public void Report(string address, LightLinkState state, string detail)
+        {
+            if (!entries.TryGetValue(address, out Entry? entry))
+                return;
+
+            entry.Attempt++;
+            entry.State = state;
+            entry.Detail = detail;
+        }
+
         public bool TryComplete(string address, int attempt, LightLinkState state, string detail)
         {
             if (!entries.TryGetValue(address, out Entry? entry))
@@ -161,7 +178,7 @@ namespace CamOnKeyLight.Core
             {
                 foreach (LightRow row in Rows)
                 {
-                    if (row.State is LightLinkState.Unreachable or LightLinkState.UnexpectedReply)
+                    if (row.State is LightLinkState.Unreachable or LightLinkState.UnexpectedReply or LightLinkState.InvalidAddress)
                         return row.Detail;
                 }
 
@@ -193,6 +210,7 @@ namespace CamOnKeyLight.Core
                             break;
                         case LightLinkState.Unreachable:
                         case LightLinkState.UnexpectedReply:
+                        case LightLinkState.InvalidAddress:
                             bad++;
                             break;
                         default:
@@ -223,7 +241,7 @@ namespace CamOnKeyLight.Core
                 IReadOnlyList<LightRow> rows = Rows;
                 int on = rows.Count(row => row.State == LightLinkState.On);
                 int off = rows.Count(row => row.State == LightLinkState.Off);
-                int bad = rows.Count(row => row.State is LightLinkState.Unreachable or LightLinkState.UnexpectedReply);
+                int bad = rows.Count(row => row.State is LightLinkState.Unreachable or LightLinkState.UnexpectedReply or LightLinkState.InvalidAddress);
 
                 return Kind switch
                 {
