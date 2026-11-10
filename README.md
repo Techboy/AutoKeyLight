@@ -22,7 +22,7 @@ Buying an Elgato light? Sign up through my [TopCashback referral link](https://w
 
 The main window lists each light's address, description, group and status. **Add**, **Edit**, **Remove**, **Retry** and **Find** sit under that list. The lines below show whether the camera is on and whether the lights are on, and the rest of the window holds the delays, Auto / On / Off, sign-in, appearance and updates. **Options** and **Help** are on the menu bar.
 
-![Cam On Key Light main window, version 0.7.0, in dark mode](docs/camonkeylight-main-window.png)
+![Cam On Key Light main window, version 0.7.0, in light mode](docs/camonkeylight-main-window.png)
 
 ## Features
 
@@ -98,7 +98,7 @@ The list columns are Light, Description, Group and Status.
 
 The description is saved with the address, for example "Light on the left". A group name is shown in the list. Once any light has a group, the tray **Groups** menu can turn that group on or off, or set its brightness to 25, 50, 75 or 100 percent. Lights with no group are listed there as Ungrouped.
 
-Automatic on and off follows the camera for every light, unless Options limits that to chosen groups. Lights with no group then follow the camera only while **All groups follow the camera** is ticked.
+Automatic on and off follows the camera for every light, unless Options limits that to chosen groups. Lights with no group follow the camera only when every group does.
 
 ## Timing
 
@@ -132,21 +132,29 @@ The shortcut works while the window is closed. The tray menu shows it next to Au
 
 ### Quiet hours
 
-Quiet hours stay off until you enable them. Set a start, an end and the days of the week. A range such as 22:00 to 07:00 crosses midnight. If the two times are the same, the selected days are quiet all day. Use 24-hour times, such as 22:00 and 07:00.
+Quiet hours stay off until you tick **Enable quiet hours**. The times start at 22:00 and 07:00, which crosses midnight, and every day starts selected. If the start and end are the same, the selected days are quiet all day. Use 24-hour times.
 
-While quiet hours are active, automatic mode does not turn lights on. Choosing On or Off, in the window or on the tray, still works. The tray tooltip and menu show whether quiet hours are active.
+While quiet hours are active, automatic mode does not turn lights on. On and Off from the tray still work, and so do On and Off in the window. The tray tooltip and menu show whether quiet hours are active.
+
+![Quiet hours options: off, from 22:00 to 07:00, every day selected](docs/camonkeylight-options-quiet-hours.png)
 
 ### Camera apps
 
-**All apps** is the default, which is the existing behaviour: any app using the camera counts. **Only these apps** or **All except these apps** uses the apps Windows reports for the camera, shown by exe name, plus names you type yourself. A name is added to the list after that app uses the camera.
+**All apps** is selected by default, so any app using the camera counts. **Only these apps** counts only the ticked names. **All except these apps** ignores the ticked names. Names appear after an app uses the camera, or you can type an exe name and press **Add**.
+
+![Camera apps options, with All apps selected](docs/camonkeylight-options-camera-apps.png)
 
 ### Groups
 
-**All groups follow the camera** is ticked by default. Untick it to choose which groups automatic mode may switch. The tray menu can still control any group by hand.
+**All groups follow the camera** is ticked by default. Untick it to choose which groups follow. Automatic switching stays per light. Lights with no group follow the camera only when every group does. The tray menu can still turn a group on or off, or set its brightness.
+
+![Groups options, with all groups set to follow the camera](docs/camonkeylight-options-groups.png)
 
 ### Notifications
 
-A notice when a light goes offline or comes back is on by default. The new state has to hold for about 20 seconds before a balloon is shown, and the first check after startup stays quiet. A notice after an update is installed is off until you turn it on.
+**Notify when a light goes offline or comes back** is on by default. Offline and online notices wait about 20 seconds, so a light that flickers does not send a burst of messages. The first check after startup does not notify. **Notify when an update is installed** is off until you turn it on.
+
+![Notification options, with offline notices on and update notices off](docs/camonkeylight-options-notifications.png)
 
 ## Appearance
 
