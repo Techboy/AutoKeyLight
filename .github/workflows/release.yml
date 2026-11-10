@@ -27,27 +27,47 @@ jobs:
             throw "Stable tags must look like v1.2.3. This workflow does not attach packages to other tags."
           }
           $version = $Matches[1]
-          $out = Join-Path $env:RUNNER_TEMP "autokeylight-release"
-          dotnet publish AutoKeyLight/AutoKeyLight.csproj -c Release -r win-x64 --self-contained true -p:Version=$version -p:DebugType=none -p:DebugSymbols=false -o $out
+          $out = Join-Path $env:RUNNER_TEMP "camonkeylight-release"
+          $legacyOut = Join-Path $env:RUNNER_TEMP "camonkeylight-legacy-release"
+          dotnet publish CamOnKeyLight/CamOnKeyLight.csproj -c Release -r win-x64 --self-contained true -p:Version=$version -p:DebugType=none -p:DebugSymbols=false -o $out
+          dotnet publish CamOnKeyLight/CamOnKeyLight.csproj -c Release -r win-x64 --self-contained true -p:Version=$version -p:AssemblyName=AutoKeyLight -p:DebugType=none -p:DebugSymbols=false -o $legacyOut
           Copy-Item LICENSE (Join-Path $out "LICENSE")
           Copy-Item README.md (Join-Path $out "README.md")
+          Copy-Item LICENSE (Join-Path $legacyOut "LICENSE")
+          Copy-Item README.md (Join-Path $legacyOut "README.md")
           $env:AUTOKEYLIGHT_PUBLISH_DIR = $out
-          dotnet test AutoKeyLight.Core.Tests/AutoKeyLight.Core.Tests.csproj -c Release --filter PublishedOutputMatchesPackageRules
-          $zip = Join-Path $env:RUNNER_TEMP "AutoKeyLight-win-x64.zip"
-          if (Test-Path $zip) { Remove-Item $zip }
+          dotnet test CamOnKeyLight.Core.Tests/CamOnKeyLight.Core.Tests.csproj -c Release --filter PublishedOutputMatchesPackageRules
           Add-Type -AssemblyName System.IO.Compression.FileSystem
+          $zip = Join-Path $env:RUNNER_TEMP "CamOnKeyLight-win-x64.zip"
+          if (Test-Path $zip) { Remove-Item $zip }
           [System.IO.Compression.ZipFile]::CreateFromDirectory($out, $zip)
           $hash = (Get-FileHash -Algorithm SHA256 $zip).Hash.ToLowerInvariant()
-          $sum = Join-Path $env:RUNNER_TEMP "AutoKeyLight-win-x64.zip.sha256"
-          [System.IO.File]::WriteAllText($sum, "$hash  AutoKeyLight-win-x64.zip`n")
+          $sum = Join-Path $env:RUNNER_TEMP "CamOnKeyLight-win-x64.zip.sha256"
+          [System.IO.File]::WriteAllText($sum, "$hash  CamOnKeyLight-win-x64.zip`n")
+          # v0.6.0 rejects any exe other than AutoKeyLight.exe. Keep that file,
+          # and carry the real CamOnKeyLight host under a .dll name it allows.
+          Copy-Item (Join-Path $out "CamOnKeyLight.dll") (Join-Path $legacyOut "CamOnKeyLight.dll")
+          Copy-Item (Join-Path $out "CamOnKeyLight.deps.json") (Join-Path $legacyOut "CamOnKeyLight.deps.json")
+          Copy-Item (Join-Path $out "CamOnKeyLight.runtimeconfig.json") (Join-Path $legacyOut "CamOnKeyLight.runtimeconfig.json")
+          Copy-Item (Join-Path $out "CamOnKeyLight.exe") (Join-Path $legacyOut "CamOnKeyLight.apphost.dll")
+          if (Test-Path (Join-Path $legacyOut "CamOnKeyLight.exe")) { throw "The legacy package must not contain CamOnKeyLight.exe." }
+          foreach ($required in @("AutoKeyLight.exe","CamOnKeyLight.dll","CamOnKeyLight.deps.json","CamOnKeyLight.runtimeconfig.json","CamOnKeyLight.apphost.dll")) {
+            if (!(Test-Path (Join-Path $legacyOut $required))) { throw "The legacy package is missing $required." }
+          }
+          $legacyZip = Join-Path $env:RUNNER_TEMP "AutoKeyLight-win-x64.zip"
+          if (Test-Path $legacyZip) { Remove-Item $legacyZip }
+          [System.IO.Compression.ZipFile]::CreateFromDirectory($legacyOut, $legacyZip)
+          $legacyHash = (Get-FileHash -Algorithm SHA256 $legacyZip).Hash.ToLowerInvariant()
+          $legacySum = Join-Path $env:RUNNER_TEMP "AutoKeyLight-win-x64.zip.sha256"
+          [System.IO.File]::WriteAllText($legacySum, "$legacyHash  AutoKeyLight-win-x64.zip`n")
           $innoSetup = Join-Path $env:RUNNER_TEMP "innosetup-6.4.3.exe"
           $innoDir = Join-Path $env:RUNNER_TEMP "innosetup"
           Invoke-WebRequest -Uri "https://github.com/jrsoftware/issrc/releases/download/is-6_4_3/innosetup-6.4.3.exe" -OutFile $innoSetup
           Start-Process -FilePath $innoSetup -ArgumentList "/VERYSILENT","/SUPPRESSMSGBOXES","/NORESTART","/DIR=$innoDir" -Wait
-          & (Join-Path $innoDir "ISCC.exe") "/DMyAppVersion=$version" "/DPublishDir=$out" "installer\AutoKeyLight.iss"
-          $setup = Join-Path (Resolve-Path "installer") "AutoKeyLight-Setup.exe"
+          & (Join-Path $innoDir "ISCC.exe") "/DMyAppVersion=$version" "/DPublishDir=$out" "installer\CamOnKeyLight.iss"
+          $setup = Join-Path (Resolve-Path "installer") "CamOnKeyLight-Setup.exe"
           if (!(Test-Path $setup)) { throw "The per-user installer was not created." }
           $setupHash = (Get-FileHash -Algorithm SHA256 $setup).Hash.ToLowerInvariant()
-          $setupSum = Join-Path $env:RUNNER_TEMP "AutoKeyLight-Setup.exe.sha256"
-          [System.IO.File]::WriteAllText($setupSum, "$setupHash  AutoKeyLight-Setup.exe`n")
-          gh release upload $tag $zip $sum $setup $setupSum --repo $env:GITHUB_REPOSITORY --clobber
+          $setupSum = Join-Path $env:RUNNER_TEMP "CamOnKeyLight-Setup.exe.sha256"
+          [System.IO.File]::WriteAllText($setupSum, "$setupHash  CamOnKeyLight-Setup.exe`n")
+          gh release upload $tag $zip $sum $legacyZip $legacySum $setup $setupSum --repo $env:GITHUB_REPOSITORY --clobber
