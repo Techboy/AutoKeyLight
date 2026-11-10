@@ -71,6 +71,12 @@ The optional **Group** on a light shows in the list and on the tray. The tray ca
 
 ## Install
 
+### Which file do I download?
+
+- **`AutoKeyLight-Setup.exe`**: download this one. It's the normal installer for most people.
+- **`AutoKeyLight-win-x64.zip`**: the portable version. Unzip it and run it without installing. The automatic updater also uses this file.
+- **`.sha256` files**: checksums for checking a download. You can ignore them.
+
 The build is not code-signed. There is no paid certificate. Windows SmartScreen may say "Windows protected your PC" the first time you open the installer or the program. Choose **More info**, then **Run anyway**.
 
 ### Per-user installer
