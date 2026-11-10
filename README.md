@@ -20,11 +20,9 @@ Buying an Elgato light? Sign up through my [TopCashback referral link](https://w
 
 ## How it looks
 
-The main window lists each light's address, a description and its status. **Add**, **Edit**, **Remove** and **Retry** sit under that list. The lines below show whether the camera is on and whether the lights are on, and the rest of the window holds the delays, Auto / On / Off, sign-in, appearance and updates.
+The main window lists each light's address, description, group and status. **Add**, **Edit**, **Remove**, **Retry** and **Find** sit under that list. The lines below show whether the camera is on and whether the lights are on, and the rest of the window holds the delays, Auto / On / Off, sign-in, appearance and updates. **Options** and **Help** are on the menu bar.
 
-![Cam On Key Light main window](docs/autokeylight-window.png)
-
-The window in the picture is still titled Auto Key Light. The app now titles it Cam On Key Light, and the current window also has a Group column, a Find button and an Options menu.
+![Cam On Key Light main window, version 0.7.0, in dark mode](docs/camonkeylight-main-window.png)
 
 ## Features
 
@@ -180,9 +178,9 @@ Version 0.6.0 is different. It asks GitHub for a repository named Techboy/AutoKe
 
 **An address you removed comes back after a restart.** The app reads lights from `%APPDATA%\Elgato\ControlCenter\Settings.xml` when Elgato Control Center has saved them. Open that file and delete the old `<IpAddress>` entries inside `<Accessories>`, or delete the file. Deleting the file clears the settings Control Center stored there.
 
-**A light is missing from the list.** Press **Find**, or type the IP yourself. Elgato Control Center shows the address on the light's own page:
+**A light is missing from the list.** Press **Find**, or type the IP yourself. Elgato Control Center, opened from the system tray, lists the lights on this PC. Open a light there to see its IP address.
 
-![Elgato Control Center showing a Key Light Air IP address](https://user-images.githubusercontent.com/15985195/174424927-f0acc48a-5e97-4d59-9b7b-bdebf4a085aa.png)
+![Elgato Control Center opened from the system tray, showing the left and right Key Lights](docs/camonkeylight-control-center.png)
 
 If you can reserve an address for the light on your router, it keeps the same IP after the light restarts.
 
