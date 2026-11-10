@@ -18,138 +18,206 @@ You shouldn't have to remember to switch your lights on before every call and of
 
 Buying an Elgato light? Sign up through my [TopCashback referral link](https://www.topcashback.co.uk/ref/techboy) to get cashback on your purchase.
 
-![Cam On Key Light main window](docs/autokeylight-window.png)
+## How it looks
 
-The app will try finding your lights IPs from an existing Elgato Control Center installation. If that fails, please add them manually.
+The main window lists each light's address, description, group and status. **Add**, **Edit**, **Remove**, **Retry** and **Find** sit under that list. The lines below show whether the camera is on and whether the lights are on, and the rest of the window holds the delays, Auto / On / Off, sign-in, appearance and updates. **Options** and **Help** are on the menu bar.
 
-If you have a "phantom" IP where after removing the IP, it comes back after restarting the app, it's most likely due to the Elgato control center app being installed with the IP in its settings. To fix that, open %APPDATA%\Elgato\ControlCenter\Settings.xml and remove any \<Acessory\> tags inside \<Accessories\>, or just delete the file altogether.
+![Cam On Key Light main window, version 0.7.0, in light mode](docs/camonkeylight-main-window.png)
 
-To find your keylight IP:
+## Features
 
-![image](https://user-images.githubusercontent.com/15985195/174424927-f0acc48a-5e97-4d59-9b7b-bdebf4a085aa.png)
+- In **Auto**, lights follow the webcam. **On** holds every configured light on, and **Off** holds them off.
+- Each light shows its own status: On, Off, Unreachable, Unexpected reply or Checking.
+- **Find** searches the local network. On startup the app also reads addresses saved by Elgato Control Center.
+- Optional descriptions and groups. From the tray, a group can be switched on or off, or set to 25, 50, 75 or 100 percent brightness.
+- Quiet hours, and a choice of which camera apps count.
+- Optional keyboard shortcuts for Auto, On and Off.
+- Light, Dark, or Follow Windows.
+- A per-user installer and a portable zip. Updates come from the stable releases of this project.
+- Starts when you sign in, if you tick that option.
 
-If you know your way around your router, you could get the lights fixed IPs to guarantee reliability.
+## Requirements
 
-This fork adds appearance, light control, shortcuts, per-light status, light discovery, quiet hours, per-app camera rules, light groups, notifications, and updates from **Techboy/CamOnKeyLight** stable releases. It does not change Windows networking, VPN, routes, or company security software.
+- 64-bit Windows 10 (version 1607 or later) or Windows 11. The .NET 8 runtime is included in the download, so you do not install it separately.
+- This PC and the lights on the same local network. The app talks to each light over HTTP. The port is 9123 unless you put a different port on the address.
+- The setup program installs for the current user and does not ask for administrator approval.
 
-Cam On Key Light is based on [astutejoe/AutoKeyLight](https://github.com/astutejoe/AutoKeyLight). It is MIT licensed. Copyright (c) 2022 Gabriel Garcia. See [LICENSE](LICENSE).
+The app leaves Windows networking, VPN, routes and company security software as they are.
+
+## Download
+
+The latest stable release is [on GitHub](https://github.com/Techboy/CamOnKeyLight/releases/latest).
+
+- **`CamOnKeyLight-Setup.exe`**: download this one. It is the normal installer.
+- **`CamOnKeyLight-win-x64.zip`**: the portable copy. Unzip it and run it. The automatic updater also uses this file.
+- **`.sha256` files**: checksums for checking a download. You can ignore them.
+- **`AutoKeyLight-win-x64.zip`**: the package version 0.6.0 expects. For a new install, use the setup program or `CamOnKeyLight-win-x64.zip`. See [Updates](#updates).
+
+The build is not code-signed. There is no paid certificate. Windows SmartScreen may say "Windows protected your PC" the first time you open the installer or the program. Choose **More info**, then **Run anyway**.
+
+### Installer
+
+1. Download `CamOnKeyLight-Setup.exe`. `CamOnKeyLight-Setup.exe.sha256` is the checksum for that file.
+2. Run the setup. It installs to `%LOCALAPPDATA%\Programs\CamOnKeyLight`, adds a **Cam On Key Light** shortcut to your Start menu, and adds a per-user uninstall entry in Windows Settings.
+3. If an older Auto Key Light install is there, setup closes it, removes that install, its Start menu shortcut and its uninstall entry, and keeps your settings.
+4. If Cam On Key Light or Auto Key Light is already running, setup asks you to close it before replacing the program files.
+
+Uninstall removes the program, the Start menu shortcut, and a sign-in startup entry that still points at this install. It leaves `%LOCALAPPDATA%\CamOnKeyLight` in place, which is where your settings and update backup live.
+
+On a new install, **Start when I sign in** stays off until you tick it. If an older copy already started at sign-in, that choice is kept.
+
+### Portable zip
+
+1. Download `CamOnKeyLight-win-x64.zip` and, if you want to check it, `CamOnKeyLight-win-x64.zip.sha256`.
+2. Extract it to a normal folder you can write to. Run it from that folder, not from inside the zip, and not from `C:\Windows`.
+3. The .NET runtime is included.
+
+The automatic updater always downloads that zip, whether you installed with setup or extracted the zip. It replaces the program files in the folder you are running, and it does not switch a portable folder over to the Start menu install. The setup program is not an automatic update.
+
+## Usage
+
+Open **Cam On Key Light** from the Start menu, or run `CamOnKeyLight.exe`. The app stays in the notification area. Its icon is a light bulb, lit while the camera is on.
+
+Closing the window hides it and leaves the app running. Double-click the icon to open the window again. **Exit** on the tray menu quits. If you start the app while it is already running, the second start does nothing.
+
+**Auto**, **On** and **Off** are in the window and on the tray menu. The choice is saved for this Windows user. The window title, the line under those choices, and the tick on the tray menu show which one is selected. The tray icon shows the camera, not the mode.
+
+**Help** contains **About Cam On Key Light** and a link to the Elgato website. **Options** on the menu bar opens the extra settings.
+
+## Lights
+
+The list columns are Light, Description, Group and Status.
+
+- **Add** or **Edit** asks for an address, a description and an optional group. You can also double-click a row, or press Enter or F2. Delete removes the selected light.
+- An address is the light's IP, for example `192.168.1.5`. Add `:port` only when the light is not on port 9123.
+- **Find** on the window, and **Find lights…** on the tray, searches the local network for Elgato lights (`_elg._tcp.local`). The dialog lists the name, address and port. Lights already in the list are skipped. If none answer, the dialog says so.
+- A light added from Find remembers its name and serial. If that address later stops responding, then after about 20 seconds the app looks for the same light and updates the address when the match is unique.
+- On startup, and again after Add or Edit, the app reads any addresses stored by Elgato Control Center. If a removed address comes back, see [Troubleshooting](#troubleshooting).
+- **Retry** checks every light again. A light that does not answer within 5 seconds is shown as Unreachable. The check only asks the light for its status.
+- The status text is **On**, **Off**, **Unreachable**, **Unexpected reply**, **Checking…** or **Not checked**. The summary says **Lights are ON** only when every listed light reported on.
+
+The description is saved with the address, for example "Light on the left". A group name is shown in the list. Once any light has a group, the tray **Groups** menu can turn that group on or off, or set its brightness to 25, 50, 75 or 100 percent. Lights with no group are listed there as Ungrouped.
+
+Automatic on and off follows the camera for every light, unless Options limits that to chosen groups. Lights with no group follow the camera only when every group does.
+
+## Timing
+
+Both boxes are in milliseconds, and both apply only in **Auto**.
+
+**On delay (ms)** is how long the camera has to stay on before the lights turn on. A new install uses 0. The maximum is 10 seconds (10000).
+
+**Off delay (ms)** is the pause after the camera turns off, so switching camera apps does not flicker the lights. A new install uses 1500. If you already saved a value, including 0, that saved value is kept. The maximum is 60 seconds (60000). Set it to 0 for an immediate automatic off. If the camera comes back before the delay ends, the pending off is dropped and the lights stay as they were.
+
+**On** and **Off** apply as soon as you choose them. Manual Off does not wait for the off delay.
 
 ## Light control
 
-**Auto / On / Off** is in the window and on the tray icon menu. The choice is saved for this Windows user.
-
-- **Auto** is the original behavior and the default. Lights follow the webcam. The on delay and the off delay apply. An existing install stays on Auto.
-- **On** turns every configured light on and keeps it on, even when the webcam turns off. The app restores On the next time it starts.
-- **Off** turns every configured light off immediately and keeps it off, even when the webcam turns on. The app restores Off the next time it starts.
-- Choosing **Auto** again sets the lights from the webcam's current state immediately. Delays apply only to webcam changes after that.
-- The webcam monitor keeps running so the window can show the real camera state. While the mode is On or Off, that monitor does not change the lights.
-- The tray icon still shows whether the camera is on. The window title, the status line, and the check mark on the tray menu show Auto, On, or Off.
-
-## Off delay
-
-The **Off delay (ms)** box is the pause after the camera turns off before automatic mode turns the lights off. It is there so switching camera apps does not flicker the lights.
-
-- New installs use **1500 ms**.
-- If you already saved a value, including 0, that saved value is kept.
-- Set it to 0 for an immediate automatic off. The maximum is 60 seconds.
-- If the camera comes back before the delay ends, the pending off is cancelled and the lights stay as they were.
-- **Manual Off does not wait.** It turns the lights off as soon as you choose it.
+- **Auto** is the original behaviour and the default. Lights follow the webcam. An existing install stays on Auto.
+- **On** turns every configured light on and keeps it on, even when the webcam turns off. The next time the app starts, it restores On.
+- **Off** turns every configured light off and keeps it off, even when the webcam turns on. The next time the app starts, it restores Off.
+- Choosing **Auto** after On or Off sets the lights from the camera's current state straight away. The delays apply to camera changes after that.
+- The camera monitor keeps running while the mode is On or Off, so the window can still show the real camera state. In those modes the lights stay on or off as you set them.
 
 ## Keyboard shortcuts
 
-Shortcuts are optional and **none are set by default**, so the app does not take keys another program already uses.
+Shortcuts are optional, and none are set by default, so the app leaves keys free for other programs.
 
-Open **Shortcuts** from the window or the tray menu. Choose Set, then press Ctrl, Alt, or Shift together with a letter, number, or function key. Esc cancels. Clear removes one. A common choice that rarely clashes is Ctrl+Alt+Shift with a letter.
+Open **Shortcuts** from the window or the tray menu. Choose Set, then press Ctrl, Alt or Shift together with a letter, number or function key (F1 to F24). Esc cancels. Clear removes one. A combination that rarely clashes is Ctrl+Alt+Shift with a letter.
 
-The shortcut works while the window is closed. The tray menu shows it next to Auto, On, or Off. Common editing and Windows shortcuts, such as Ctrl+C and Alt+F4, are refused. If Windows says another program already owns the shortcut, the app tells you and leaves the previous shortcut in place. Shortcuts are released when you exit from the tray menu.
-
-## Light status
-
-Each light has its own status: **On**, **Off**, **Unreachable**, **Unexpected reply**, or **Checking…**. The summary line does not say the lights are on after a call fails. The **Description** column is saved with the address, for example "Light on the left". Use **Add** or **Edit**, double-click a row, or press Enter or F2. Delete removes the selected light.
-
-**Retry** checks every light again. A light that does not answer within 5 seconds is shown as unreachable. That is only a connection check. It does not change VPN settings, routes, or security software.
-
-**Find** searches the local network for Elgato lights (`_elg._tcp.local`) and lists the name, address, and port. Lights you already added are skipped. If none answer, the dialog says so. A light that was added from Find remembers its name and serial. If that address later stops responding, the app looks for the same light and updates the address when the match is unique.
-
-The optional **Group** on a light shows in the list and on the tray. The tray can turn one group on or off, or set its brightness to 25, 50, 75, or 100 percent. Automatic on and off still follows the camera for every light unless Options limits that to chosen groups.
+The shortcut works while the window is closed. The tray menu shows it next to Auto, On or Off. Common editing and Windows shortcuts, such as Ctrl+C and Alt+F4, are refused, and the Windows key is refused too. If Windows says another program already owns the shortcut, the app tells you and leaves the previous shortcut in place. Shortcuts are released when you exit from the tray menu.
 
 ## Options
 
 **Options** on the menu bar, and **Options…** on the tray, holds the settings that are not on the main window.
 
-- **Quiet hours** have a start, an end, and days of the week. A range such as 22:00 to 07:00 crosses midnight. While quiet hours are active, automatic mode does not turn lights on. Tray On and Off still work. The tray tooltip and menu show whether quiet hours are active.
-- **Camera apps** can stay on **All apps**, which is the existing behavior. **Only these apps** or **All except these apps** uses the apps Windows reports for the camera, shown by exe name, plus names you type yourself.
-- **Notifications** for a light going offline or coming back are on by default. A change has to hold for about 20 seconds before a balloon is shown, and the first check after startup is quiet. A notice after an update is installed is off until you turn it on.
+### Quiet hours
+
+Quiet hours stay off until you tick **Enable quiet hours**. The times start at 22:00 and 07:00, which crosses midnight, and every day starts selected. If the start and end are the same, the selected days are quiet all day. Use 24-hour times.
+
+While quiet hours are active, automatic mode does not turn lights on. On and Off from the tray still work, and so do On and Off in the window. The tray tooltip and menu show whether quiet hours are active.
+
+![Quiet hours options: off, from 22:00 to 07:00, every day selected](docs/camonkeylight-options-quiet-hours.png)
+
+### Camera apps
+
+**All apps** is selected by default, so any app using the camera counts. **Only these apps** counts only the ticked names. **All except these apps** ignores the ticked names. Names appear after an app uses the camera, or you can type an exe name and press **Add**.
+
+![Camera apps options, with All apps selected](docs/camonkeylight-options-camera-apps.png)
+
+### Groups
+
+**All groups follow the camera** is ticked by default. Untick it to choose which groups follow. Automatic switching stays per light. Lights with no group follow the camera only when every group does. The tray menu can still turn a group on or off, or set its brightness.
+
+![Groups options, with all groups set to follow the camera](docs/camonkeylight-options-groups.png)
+
+### Notifications
+
+**Notify when a light goes offline or comes back** is on by default. Offline and online notices wait about 20 seconds, so a light that flickers does not send a burst of messages. The first check after startup does not notify. **Notify when an update is installed** is off until you turn it on.
+
+![Notification options, with offline notices on and update notices off](docs/camonkeylight-options-notifications.png)
 
 ## Appearance
 
-**Light**, **Dark**, or **Follow Windows**. The choice is saved. Follow Windows tracks the app theme. High contrast keeps Windows system colors.
-
-## Install
-
-### Which file do I download?
-
-- **`CamOnKeyLight-Setup.exe`**: download this one. It's the normal installer for most people.
-- **`CamOnKeyLight-win-x64.zip`**: the portable version. Unzip it and run it without installing. The automatic updater also uses this file.
-- **`.sha256` files**: checksums for checking a download. You can ignore them.
-
-The build is not code-signed. There is no paid certificate. Windows SmartScreen may say "Windows protected your PC" the first time you open the installer or the program. Choose **More info**, then **Run anyway**.
-
-### Per-user installer
-
-1. Open the latest stable release: https://github.com/Techboy/CamOnKeyLight/releases/latest
-2. Download `CamOnKeyLight-Setup.exe`. `CamOnKeyLight-Setup.exe.sha256` is the checksum for that file.
-3. Run the setup. It does not ask for administrator approval. It installs to `%LOCALAPPDATA%\Programs\CamOnKeyLight`, adds a **Cam On Key Light** shortcut to your Start menu, and adds a per-user uninstall entry in Windows Settings. If an older Auto Key Light install is there, setup closes it, removes that install, its Start menu shortcut, and its Apps & features entry, and keeps your settings.
-4. If Cam On Key Light or Auto Key Light is already running, the setup asks to close it before replacing the program files.
-5. Uninstall removes the program, the Start menu shortcut, and a sign-in startup entry that still points at this install. It leaves `%LOCALAPPDATA%\CamOnKeyLight` in place, which is where your settings and update backup live.
-
-### Portable zip
-
-The zip is still published for people who want a folder they can move.
-
-1. Download `CamOnKeyLight-win-x64.zip` and, if you want to check it, `CamOnKeyLight-win-x64.zip.sha256`.
-2. Extract it to a normal folder you can write to. Do not run it from inside the zip, and do not put it in `C:\Windows`.
-3. The .NET runtime is included.
-
-The automatic updater always downloads that zip, whether you installed with setup or extracted the zip. It replaces the program files in the folder you are running, and it does not switch you from a portable folder to the Start menu install. The setup program is not an automatic update.
+Choose **Light**, **Dark** or **Follow Windows**. The choice is saved. Follow Windows matches the Windows app theme. While Windows high contrast is on, the app keeps the Windows system colours.
 
 ## Settings
 
-Light addresses, descriptions, groups, delays, theme, light mode, shortcuts, quiet hours, camera-app rules, notification choices, and the update checkbox are stored in `%LOCALAPPDATA%\CamOnKeyLight\user-settings.json`. That file is outside the program folder, so installing, updating, or moving the program does not erase it. A settings file from an older version still loads; the new choices use their defaults.
+Light addresses, descriptions, groups, delays, theme, light mode, shortcuts, quiet hours, camera-app rules, notification choices and the update tick box are stored in `%LOCALAPPDATA%\CamOnKeyLight\user-settings.json`. That file sits outside the program folder, so installing, updating or moving the program leaves it in place. A settings file from an older version still loads. Anything that file does not mention yet uses the default.
 
-The first time this version starts, if that file is missing and `%LOCALAPPDATA%\AutoKeyLight\user-settings.json` exists, it copies the old file and leaves the original in place. It also copies an existing `user.config` from the older per-folder settings location when that file still has your lights. A saved off delay of 0 stays 0. Descriptions start blank until you edit them.
+The first time this version starts, if that file is missing and `%LOCALAPPDATA%\AutoKeyLight\user-settings.json` exists, the app copies the old file and leaves the original in place. It also picks up an existing `user.config` from the older per-folder settings when that file still has your lights. A saved off delay of 0 stays 0. Descriptions start blank until you edit them.
 
-## Sign-in
+### Start when I sign in
 
-**Start when I sign in** follows the current user's Startup apps list (`HKCU\...\Run`). It runs after you sign in. It does not run before Windows login, and it does not need administrator approval. The command is stored in quotes under the name `CamOnKeyLight`. An older `AutoKeyLight` or `MyApp` entry that pointed at this app is moved to that name and updated to the copy you are running, so a previous folder is not launched after you move or install the app. If sign-in startup was off, it stays off.
+The tick box follows the current user's Startup apps list (`HKCU\Software\Microsoft\Windows\CurrentVersion\Run`). The app runs after you sign in. It does not run before Windows login, and it does not need administrator approval. The command is stored in quotes under the name `CamOnKeyLight`. An older `AutoKeyLight` or `MyApp` entry that pointed at this app is moved to that name and updated to the copy you are running, so a previous folder is not launched after you move or install the app. If sign-in startup was off, it stays off.
 
 ## Updates
 
-Installed copies check only **stable** releases of **Techboy/CamOnKeyLight** and download `CamOnKeyLight-win-x64.zip`. They do not update from the upstream [astutejoe/AutoKeyLight](https://github.com/astutejoe/AutoKeyLight) project, and they do not use a token or other credential. A copy still on 0.6.0 looks for `AutoKeyLight-win-x64.zip` on the previous repository name; that file is also attached to the release so it can move across.
+This version checks only stable releases of [Techboy/CamOnKeyLight](https://github.com/Techboy/CamOnKeyLight/releases) and downloads `CamOnKeyLight-win-x64.zip`. Pre-releases and drafts are ignored. It does not update from the upstream [astutejoe/AutoKeyLight](https://github.com/astutejoe/AutoKeyLight) project, and it does not send a token or other credential.
 
-**Install updates automatically** is on by default. Uncheck it to stop background checks and unattended installs. **Check for updates** still works, and **Install update** appears only after a package has been downloaded and checked.
+**Install updates automatically** is ticked by default. Untick it to stop background checks and unattended installs. While it is ticked, the first check runs shortly after startup, then about every six hours. **Check for updates** still works with the tick box clear, and **Install update** appears only after a package has been downloaded and checked.
 
-An update is not applied while the webcam is on. Automatic install also waits until the camera has been off for 15 seconds. If GitHub cannot be reached, the app keeps the version you already have and says so.
+An update waits while the webcam is on. Automatic install also waits until the camera has been off for 15 seconds. If GitHub cannot be reached, the app keeps the version you already have and says so.
 
-A download is accepted only from this repository's GitHub release. The zip is checked against GitHub's asset digest, when GitHub provides one, and against the published SHA-256 file. The zip is then extracted with path checks. The previous program files are copied to `%LOCALAPPDATA%\CamOnKeyLight\updates\backup` before they are replaced, and restored if the copy fails or the new program's version does not match the release. The app restarts into the tray after a successful update.
+A download is accepted only from this repository's GitHub release. The zip is checked against GitHub's asset digest, when GitHub provides one, and against the published SHA-256 file. It is then extracted with path checks. The previous program files are copied to `%LOCALAPPDATA%\CamOnKeyLight\updates\backup` before they are replaced, and restored if the copy fails or the new program's version does not match the release. After a successful update the app restarts into the tray.
+
+Version 0.6.0 is different. It asks GitHub for a repository named Techboy/AutoKeyLight, and it only accepts a download address under `/Techboy/AutoKeyLight/releases/download/`. This repository is now Techboy/CamOnKeyLight, and GitHub lists the files under that name, so a PC still on 0.6.0 will not take the update by itself. Install `CamOnKeyLight-Setup.exe`, or the current portable zip, on that PC. The release still includes `AutoKeyLight-win-x64.zip` because that is the package shape 0.6.0 knows how to open: it has to contain `AutoKeyLight.exe` and it must not contain `CamOnKeyLight.exe`.
+
+## Troubleshooting
+
+**An address you removed comes back after a restart.** The app reads lights from `%APPDATA%\Elgato\ControlCenter\Settings.xml` when Elgato Control Center has saved them. Open that file and delete the old `<IpAddress>` entries inside `<Accessories>`, or delete the file. Deleting the file clears the settings Control Center stored there.
+
+**A light is missing from the list.** Press **Find**, or type the IP yourself. Elgato Control Center, opened from the system tray, lists the lights on this PC. Open a light there to see its IP address.
+
+![Elgato Control Center opened from the system tray, showing the left and right Key Lights](docs/camonkeylight-control-center.png)
+
+If you can reserve an address for the light on your router, it keeps the same IP after the light restarts.
+
+**The status says Unreachable.** The light did not answer within 5 seconds. Check that this PC and the light are on the same network, then press **Retry**. Retry only checks the connection. It leaves VPN settings, routes and security software alone.
+
+**The lights flicker when one camera app takes over from another.** Raise **Off delay**. A new install uses 1500 ms, which is there for that gap.
+
+**The lights stay off during a call.** Confirm the mode is **Auto**, quiet hours are not active, and **Camera apps** is not set to ignore the program you are in. The camera line follows Windows: it is on when an app is streaming from the camera.
+
+**The lights stay on after a call.** **On** keeps them on. In **Auto** they wait out the off delay, and they stay on if Windows still reports the camera as in use.
+
+**Nothing happens when you open the app.** It is already running, or you closed the window earlier. Look for the light-bulb icon in the notification area. **Exit** on that menu is what quits.
 
 ## Releasing a new version
 
-This uses the free `windows-latest` runner on this public repository. It does not use a paid runner, a code-signing certificate, an Actions cache, or a stored Actions artifact.
+The repository is [Techboy/CamOnKeyLight](https://github.com/Techboy/CamOnKeyLight). Publishing a release uses the free `windows-latest` runner. That workflow does not use a code-signing certificate, an Actions cache, or a stored Actions artifact.
 
-For 0.7.0, publish the release while the repository is still named **Techboy/AutoKeyLight**, then rename it to **Techboy/CamOnKeyLight**. v0.6.0 only accepts download URLs under `/Techboy/AutoKeyLight/releases/download/`. GitHub's release API uses the current repository name in those URLs, so renaming first would make v0.6.0 refuse the package.
+1. Pick the next version, for example `0.8.0`.
+2. Create a GitHub release and tag it `v0.8.0`. Leave it as a normal release, not a pre-release and not a draft. The tag has to look like `v1.2.3`.
+3. Publish the release. The workflow attaches `CamOnKeyLight-win-x64.zip`, `CamOnKeyLight-win-x64.zip.sha256`, `AutoKeyLight-win-x64.zip`, `AutoKeyLight-win-x64.zip.sha256`, `CamOnKeyLight-Setup.exe` and `CamOnKeyLight-Setup.exe.sha256`.
+4. Wait until those files are listed. People installing for the first time run the setup program. Copies already on 0.7.0 or later download `CamOnKeyLight-win-x64.zip`.
 
-1. Pick the next version, for example `0.7.0`.
-2. On GitHub, create a release in **Techboy/AutoKeyLight**. Tag it `v0.7.0`. Leave it as a normal release, not a pre-release and not a draft.
-3. Publish the release. The release workflow attaches `CamOnKeyLight-win-x64.zip`, `CamOnKeyLight-win-x64.zip.sha256`, `AutoKeyLight-win-x64.zip`, `AutoKeyLight-win-x64.zip.sha256`, `CamOnKeyLight-Setup.exe`, and `CamOnKeyLight-Setup.exe.sha256`.
-4. Wait until those files are listed. People installing for the first time run the setup program. Copies already on 0.7.0 or later download `CamOnKeyLight-win-x64.zip`. Copies still on 0.6.0 download `AutoKeyLight-win-x64.zip`.
-5. Rename the repository to **Techboy/CamOnKeyLight**. GitHub redirects the old repository URLs. Do this after the 0.6.0 copies you care about have updated, or give those PCs the new setup program.
+The version in the program comes from that tag. The workflow builds the zip files and the setup program from the same folder. Attach those files by hand only if the workflow failed. The app expects the checksum and GitHub's digest to describe the same zip.
 
-The version in the program comes from that tag. The workflow builds the zip and the setup from the same folder. Do not attach those files by hand unless the workflow failed; the app expects the checksum and GitHub's digest to describe the same zip.
+`AutoKeyLight-win-x64.zip` is still produced so the legacy package keeps the file name version 0.6.0 will accept. A PC on 0.6.0 will not download it on its own after the repository rename. See [Updates](#updates).
 
 ## Build
 
-The logic tests run on .NET 8:
+The logic tests run on .NET 8, including on a machine that is not running Windows:
 
 ```bash
 dotnet test CamOnKeyLight.Core.Tests/CamOnKeyLight.Core.Tests.csproj -c Release
@@ -160,3 +228,17 @@ The Windows app itself builds on Windows:
 ```powershell
 dotnet publish CamOnKeyLight/CamOnKeyLight.csproj -c Release -r win-x64 --self-contained true
 ```
+
+To build the packages a release would publish, on Windows, pass the version to stamp into the build:
+
+```powershell
+pwsh -NoProfile -File build/package.ps1 -Version 0.8.0
+```
+
+The script publishes the app, runs the package checks, and writes `CamOnKeyLight-win-x64.zip`, `AutoKeyLight-win-x64.zip` and `CamOnKeyLight-Setup.exe` under `dist`, with a `.sha256` file beside each one. The setup program is compiled with Inno Setup 6.4.3. If that compiler is not already unpacked in the build's work folder, the script downloads it.
+
+## Licence
+
+Cam On Key Light is based on [astutejoe/AutoKeyLight](https://github.com/astutejoe/AutoKeyLight). It is MIT licensed. Copyright (c) 2022 Gabriel Garcia. See [LICENSE](LICENSE).
+
+Cam On Key Light is an independent app. It is not made, sold or endorsed by Elgato.
