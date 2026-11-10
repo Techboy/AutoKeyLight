@@ -14,7 +14,7 @@ To find your keylight IP:
 
 If you know your way around your router, you could get the lights fixed IPs to guarantee reliability.
 
-This fork adds appearance, light control, shortcuts, per-light status, and updates from **Techboy/AutoKeyLight** stable releases. It does not change Windows networking, VPN, routes, or company security software.
+This fork adds appearance, light control, shortcuts, per-light status, light discovery, quiet hours, per-app camera rules, light groups, notifications, and updates from **Techboy/AutoKeyLight** stable releases. It does not change Windows networking, VPN, routes, or company security software.
 
 AutoKeyLight is MIT licensed. Copyright (c) 2022 Gabriel Garcia. See [LICENSE](LICENSE).
 
@@ -53,6 +53,18 @@ Each light has its own status: **On**, **Off**, **Unreachable**, **Unexpected re
 
 **Retry** checks every light again. A light that does not answer within 5 seconds is shown as unreachable. That is only a connection check. It does not change VPN settings, routes, or security software.
 
+**Find** searches the local network for Elgato lights (`_elg._tcp.local`) and lists the name, address, and port. Lights you already added are skipped. If none answer, the dialog says so. A light that was added from Find remembers its name and serial. If that address later stops responding, the app looks for the same light and updates the address when the match is unique.
+
+The optional **Group** on a light shows in the list and on the tray. The tray can turn one group on or off, or set its brightness to 25, 50, 75, or 100 percent. Automatic on and off still follows the camera for every light unless Options limits that to chosen groups.
+
+## Options
+
+**Options** on the menu bar, and **Options…** on the tray, holds the settings that are not on the main window.
+
+- **Quiet hours** have a start, an end, and days of the week. A range such as 22:00 to 07:00 crosses midnight. While quiet hours are active, automatic mode does not turn lights on. Tray On and Off still work. The tray tooltip and menu show whether quiet hours are active.
+- **Camera apps** can stay on **All apps**, which is the existing behavior. **Only these apps** or **All except these apps** uses the apps Windows reports for the camera, shown by exe name, plus names you type yourself.
+- **Notifications** for a light going offline or coming back are on by default. A change has to hold for about 20 seconds before a balloon is shown, and the first check after startup is quiet. A notice after an update is installed is off until you turn it on.
+
 ## Appearance
 
 **Light**, **Dark**, or **Follow Windows**. The choice is saved. Follow Windows tracks the app theme. High contrast keeps Windows system colors.
@@ -81,7 +93,7 @@ The automatic updater always downloads that zip, whether you installed with setu
 
 ## Settings
 
-Light addresses, descriptions, delays, theme, light mode, shortcuts, and the update checkbox are stored in `%LOCALAPPDATA%\AutoKeyLight\user-settings.json`. That file is outside the program folder, so installing, updating, or moving the program does not erase it.
+Light addresses, descriptions, groups, delays, theme, light mode, shortcuts, quiet hours, camera-app rules, notification choices, and the update checkbox are stored in `%LOCALAPPDATA%\AutoKeyLight\user-settings.json`. That file is outside the program folder, so installing, updating, or moving the program does not erase it. A settings file from an older version still loads; the new choices use their defaults.
 
 The first time this version starts, it copies an existing `user.config` from the older per-folder settings location when that file still has your lights. A saved off delay of 0 stays 0. Descriptions start blank until you edit them.
 

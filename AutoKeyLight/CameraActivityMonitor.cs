@@ -60,21 +60,27 @@ namespace AutoKeyLight
                 try
                 {
                     bool streaming = false;
+                    List<int> processes = new List<int>();
                     uint deviceCount = report.GetCount();
 
-                    for (uint i = 0; i < deviceCount && !streaming; i++)
+                    for (uint i = 0; i < deviceCount; i++)
                     {
                         IMFSensorActivityReport device = report.GetActivityReport(i);
                         uint processCount = device.GetProcessCount();
 
                         // Apps often open the camera just to enumerate it, only count the ones actually streaming
-                        for (uint p = 0; p < processCount && !streaming; p++)
+                        for (uint p = 0; p < processCount; p++)
                         {
-                            streaming = device.GetProcessActivity(p).GetStreamingState();
+                            IMFSensorProcessActivity activity = device.GetProcessActivity(p);
+                            if (!activity.GetStreamingState())
+                                continue;
+
+                            streaming = true;
+                            processes.Add(unchecked((int)activity.GetProcessId()));
                         }
                     }
 
-                    owner.isCameraStreaming = streaming;
+                    owner.Publish(streaming, processes);
                 }
                 catch { }
 
@@ -95,9 +101,26 @@ namespace AutoKeyLight
 
         private readonly ReportCallback callback;
         private readonly IMFSensorActivityMonitor monitor;
+        private readonly object activityGate = new object();
+        private int[] streamingProcessIds = Array.Empty<int>();
         private volatile bool isCameraStreaming = false;
 
         public bool IsCameraStreaming => isCameraStreaming;
+
+        public int[] CopyStreamingProcessIds()
+        {
+            lock (activityGate)
+                return streamingProcessIds.ToArray();
+        }
+
+        private void Publish(bool streaming, List<int> processes)
+        {
+            lock (activityGate)
+            {
+                isCameraStreaming = streaming;
+                streamingProcessIds = processes.ToArray();
+            }
+        }
 
         private CameraActivityMonitor()
         {

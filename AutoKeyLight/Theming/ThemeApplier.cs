@@ -176,13 +176,30 @@ namespace AutoKeyLight
         public static void ApplySystem(Control root, ContextMenuStrip menu)
         {
             ApplySystem(root);
+            ApplySystemMenu(menu);
+        }
+
+        public static void ApplySystemMenu(ContextMenuStrip menu)
+        {
             menu.Renderer = new ToolStripProfessionalRenderer();
             menu.BackColor = SystemColors.Control;
             menu.ForeColor = SystemColors.ControlText;
-            foreach (ToolStripItem item in menu.Items)
+            PaintSystemItems(menu.Items);
+        }
+
+        private static void PaintSystemItems(ToolStripItemCollection items)
+        {
+            foreach (ToolStripItem item in items)
             {
                 item.BackColor = SystemColors.Control;
                 item.ForeColor = SystemColors.ControlText;
+                if (item is ToolStripDropDownItem dropDown)
+                {
+                    dropDown.DropDown.Renderer = new ToolStripProfessionalRenderer();
+                    dropDown.DropDown.BackColor = SystemColors.Control;
+                    dropDown.DropDown.ForeColor = SystemColors.ControlText;
+                    PaintSystemItems(dropDown.DropDownItems);
+                }
             }
         }
 
@@ -196,7 +213,7 @@ namespace AutoKeyLight
                 button.ForeColor = palette.ButtonForeground.ToColor();
                 button.FlatAppearance.BorderColor = palette.Border.ToColor();
             }
-            else if (control is ListView or ComboBox or NumericUpDown or TextBox)
+            else if (control is ListView or ListBox or ComboBox or NumericUpDown or TextBox)
             {
                 control.BackColor = palette.InputBackground.ToColor();
                 control.ForeColor = palette.InputForeground.ToColor();
@@ -233,7 +250,7 @@ namespace AutoKeyLight
 
         private static void ApplySystemControl(Control control)
         {
-            if (control is ListView or ComboBox or NumericUpDown or TextBox)
+            if (control is ListView or ListBox or ComboBox or NumericUpDown or TextBox)
             {
                 control.BackColor = SystemColors.Window;
                 control.ForeColor = SystemColors.WindowText;

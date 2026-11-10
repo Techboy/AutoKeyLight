@@ -18,17 +18,20 @@
             components = new System.ComponentModel.Container();
             tmrCameraCheck = new System.Windows.Forms.Timer(components);
             menuMain = new MenuStrip();
+            menuOptions = new ToolStripMenuItem();
             menuHelp = new ToolStripMenuItem();
             helpAbout = new ToolStripMenuItem();
             helpElgato = new ToolStripMenuItem();
             lvLights = new ListView();
             colLight = new ColumnHeader();
             colDescription = new ColumnHeader();
+            colGroup = new ColumnHeader();
             colStatus = new ColumnHeader();
             btnAddLight = new Button();
             btnEditLight = new Button();
             btnRemoveLight = new Button();
             btnRetry = new Button();
+            btnFindLights = new Button();
             lblCameraState = new Label();
             lblLightState = new Label();
             lblDetail = new Label();
@@ -58,7 +61,11 @@
             tsmiAuto = new ToolStripMenuItem();
             tsmiOn = new ToolStripMenuItem();
             tsmiOff = new ToolStripMenuItem();
+            tsmiQuiet = new ToolStripMenuItem();
             sepTray = new ToolStripSeparator();
+            tsmiGroups = new ToolStripMenuItem();
+            tsmiFindLights = new ToolStripMenuItem();
+            tsmiOptions = new ToolStripMenuItem();
             tsmiShortcuts = new ToolStripMenuItem();
             tsmiOpen = new ToolStripMenuItem();
             tsmiExit = new ToolStripMenuItem();
@@ -80,13 +87,20 @@
             // 
             // menuMain
             // 
-            menuMain.Items.AddRange(new ToolStripItem[] { menuHelp });
+            menuMain.Items.AddRange(new ToolStripItem[] { menuOptions, menuHelp });
             menuMain.Dock = DockStyle.Top;
             menuMain.Location = new Point(0, 0);
             menuMain.Name = "menuMain";
             menuMain.Size = new Size(544, 24);
             menuMain.TabIndex = 0;
             menuMain.Text = "Main menu";
+            // 
+            // menuOptions
+            // 
+            menuOptions.Name = "menuOptions";
+            menuOptions.Size = new Size(61, 20);
+            menuOptions.Text = "&Options";
+            menuOptions.Click += menuOptions_Click;
             // 
             // menuHelp
             // 
@@ -111,7 +125,7 @@
             // 
             // lvLights
             // 
-            lvLights.Columns.AddRange(new ColumnHeader[] { colLight, colDescription, colStatus });
+            lvLights.Columns.AddRange(new ColumnHeader[] { colLight, colDescription, colGroup, colStatus });
             lvLights.FullRowSelect = true;
             lvLights.HeaderStyle = ColumnHeaderStyle.Nonclickable;
             lvLights.HideSelection = false;
@@ -138,7 +152,12 @@
             // colDescription
             // 
             colDescription.Text = "Description";
-            colDescription.Width = 220;
+            colDescription.Width = 160;
+            // 
+            // colGroup
+            // 
+            colGroup.Text = "Group";
+            colGroup.Width = 90;
             // 
             // colStatus
             // 
@@ -186,6 +205,17 @@
             btnRetry.Text = "Re&try";
             btnRetry.UseVisualStyleBackColor = true;
             btnRetry.Click += btnRetry_Click;
+            // 
+            // btnFindLights
+            // 
+            btnFindLights.Location = new Point(420, 150);
+            btnFindLights.Name = "btnFindLights";
+            btnFindLights.Size = new Size(96, 28);
+            btnFindLights.TabIndex = 6;
+            btnFindLights.Text = "&Find";
+            btnFindLights.UseVisualStyleBackColor = true;
+            btnFindLights.AccessibleName = "Find lights";
+            btnFindLights.Click += btnFindLights_Click;
             // 
             // lblCameraState
             // 
@@ -452,7 +482,7 @@
             // 
             // cmsTray
             // 
-            cmsTray.Items.AddRange(new ToolStripItem[] { tsmiAuto, tsmiOn, tsmiOff, sepTray, tsmiShortcuts, tsmiOpen, tsmiExit });
+            cmsTray.Items.AddRange(new ToolStripItem[] { tsmiAuto, tsmiOn, tsmiOff, tsmiQuiet, sepTray, tsmiGroups, tsmiFindLights, tsmiOptions, tsmiShortcuts, tsmiOpen, tsmiExit });
             cmsTray.Name = "cmsTray";
             cmsTray.Size = new Size(160, 142);
             cmsTray.ItemClicked += cmsTray_ItemClicked;
@@ -476,10 +506,36 @@
             tsmiOff.Size = new Size(159, 22);
             tsmiOff.Text = "Off";
             // 
+            // tsmiQuiet
+            // 
+            tsmiQuiet.Enabled = false;
+            tsmiQuiet.Name = "tsmiQuiet";
+            tsmiQuiet.Size = new Size(159, 22);
+            tsmiQuiet.Text = "Quiet hours off";
+            // 
             // sepTray
             // 
             sepTray.Name = "sepTray";
             sepTray.Size = new Size(156, 6);
+            // 
+            // tsmiGroups
+            // 
+            tsmiGroups.Name = "tsmiGroups";
+            tsmiGroups.Size = new Size(159, 22);
+            tsmiGroups.Text = "Groups";
+            tsmiGroups.Visible = false;
+            // 
+            // tsmiFindLights
+            // 
+            tsmiFindLights.Name = "tsmiFindLights";
+            tsmiFindLights.Size = new Size(159, 22);
+            tsmiFindLights.Text = "Find lights…";
+            // 
+            // tsmiOptions
+            // 
+            tsmiOptions.Name = "tsmiOptions";
+            tsmiOptions.Size = new Size(159, 22);
+            tsmiOptions.Text = "Options…";
             // 
             // tsmiShortcuts
             // 
@@ -511,6 +567,7 @@
             Controls.Add(lblDetail);
             Controls.Add(lblLightState);
             Controls.Add(lblCameraState);
+            Controls.Add(btnFindLights);
             Controls.Add(btnRetry);
             Controls.Add(btnRemoveLight);
             Controls.Add(btnEditLight);
@@ -546,17 +603,20 @@
 
         private System.Windows.Forms.Timer tmrCameraCheck;
         private MenuStrip menuMain;
+        private ToolStripMenuItem menuOptions;
         private ToolStripMenuItem menuHelp;
         private ToolStripMenuItem helpAbout;
         private ToolStripMenuItem helpElgato;
         private ListView lvLights;
         private ColumnHeader colLight;
         private ColumnHeader colDescription;
+        private ColumnHeader colGroup;
         private ColumnHeader colStatus;
         private Button btnAddLight;
         private Button btnEditLight;
         private Button btnRemoveLight;
         private Button btnRetry;
+        private Button btnFindLights;
         private Label lblCameraState;
         private Label lblLightState;
         private Label lblDetail;
@@ -586,7 +646,11 @@
         private ToolStripMenuItem tsmiAuto;
         private ToolStripMenuItem tsmiOn;
         private ToolStripMenuItem tsmiOff;
+        private ToolStripMenuItem tsmiQuiet;
         private ToolStripSeparator sepTray;
+        private ToolStripMenuItem tsmiGroups;
+        private ToolStripMenuItem tsmiFindLights;
+        private ToolStripMenuItem tsmiOptions;
         private ToolStripMenuItem tsmiShortcuts;
         private ToolStripMenuItem tsmiOpen;
         private ToolStripMenuItem tsmiExit;

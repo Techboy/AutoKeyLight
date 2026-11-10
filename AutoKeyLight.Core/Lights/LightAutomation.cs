@@ -78,7 +78,7 @@ namespace AutoKeyLight.Core
             return null;
         }
 
-        public LightCommand? OnCameraSample(bool cameraOn, DateTime utcNow, TimeSpan onDelay, TimeSpan offDelay)
+        public LightCommand? OnCameraSample(bool cameraOn, DateTime utcNow, TimeSpan onDelay, TimeSpan offDelay, bool blockAutomaticOn = false)
         {
             if (onDelay < TimeSpan.Zero)
                 onDelay = TimeSpan.Zero;
@@ -100,6 +100,10 @@ namespace AutoKeyLight.Core
             {
                 // A camera that is active again cancels a pending automatic off.
                 if (utcNow < cameraOnSinceUtc.Add(onDelay))
+                    return null;
+
+                // Quiet hours stop automatic on. Manual On and Off are handled above.
+                if (blockAutomaticOn)
                     return null;
 
                 return Command(LightPower.On);
@@ -228,6 +232,12 @@ namespace AutoKeyLight.Core
         {
             int onState = turnOn ? 1 : 0;
             return "{\"numberOfLights\": 1, \"lights\": [{\"on\": " + onState + "}]}";
+        }
+
+        public static string BrightnessBody(int brightness)
+        {
+            int level = Math.Clamp(brightness, 0, 100);
+            return "{\"numberOfLights\": 1, \"lights\": [{\"on\": 1, \"brightness\": " + level + "}]}";
         }
 
         public static IReadOnlyList<LightTarget> ForEachLight(IEnumerable<string> addresses, LightPower power)

@@ -6,14 +6,29 @@ namespace AutoKeyLight.Core
 {
     public sealed class LightRecord
     {
-        public LightRecord(string address, string description)
+        public LightRecord()
         {
-            Address = address.Trim();
-            Description = description.Trim();
+            Address = "";
+            Description = "";
+            Group = "";
+            ProductName = "";
+            Serial = "";
+        }
+
+        public LightRecord(string address, string description, string? group = null, string? productName = null, string? serial = null)
+        {
+            Address = (address ?? "").Trim();
+            Description = (description ?? "").Trim();
+            Group = (group ?? "").Trim();
+            ProductName = (productName ?? "").Trim();
+            Serial = (serial ?? "").Trim();
         }
 
         public string Address { get; set; }
         public string Description { get; set; }
+        public string Group { get; set; }
+        public string ProductName { get; set; }
+        public string Serial { get; set; }
     }
 
     public sealed class AppUserSettings
@@ -27,6 +42,17 @@ namespace AutoKeyLight.Core
         public string HotkeyAuto { get; set; } = "";
         public string HotkeyOn { get; set; } = "";
         public string HotkeyOff { get; set; } = "";
+        public bool QuietHoursEnabled { get; set; }
+        public string QuietStart { get; set; } = "22:00";
+        public string QuietEnd { get; set; } = "07:00";
+        public string QuietDays { get; set; } = QuietHours.AllDays;
+        public string CameraAppMode { get; set; } = "All";
+        public List<string> KnownCameraApps { get; set; } = new List<string>();
+        public List<string> SelectedCameraApps { get; set; } = new List<string>();
+        public bool AllGroupsFollowCamera { get; set; } = true;
+        public List<string> CameraGroups { get; set; } = new List<string>();
+        public bool NotifyLightPresence { get; set; } = true;
+        public bool NotifyOnUpdate { get; set; }
 
         public static AppUserSettings CreateDefault()
         {
@@ -44,10 +70,21 @@ namespace AutoKeyLight.Core
                 LightMode = LightMode,
                 HotkeyAuto = HotkeyAuto,
                 HotkeyOn = HotkeyOn,
-                HotkeyOff = HotkeyOff
+                HotkeyOff = HotkeyOff,
+                QuietHoursEnabled = QuietHoursEnabled,
+                QuietStart = QuietStart,
+                QuietEnd = QuietEnd,
+                QuietDays = QuietDays,
+                CameraAppMode = CameraAppMode,
+                AllGroupsFollowCamera = AllGroupsFollowCamera,
+                NotifyLightPresence = NotifyLightPresence,
+                NotifyOnUpdate = NotifyOnUpdate
             };
+            copy.KnownCameraApps.AddRange(KnownCameraApps);
+            copy.SelectedCameraApps.AddRange(SelectedCameraApps);
+            copy.CameraGroups.AddRange(CameraGroups);
             foreach (LightRecord light in Lights)
-                copy.Lights.Add(new LightRecord(light.Address, light.Description));
+                copy.Lights.Add(new LightRecord(light.Address, light.Description, light.Group, light.ProductName, light.Serial));
             return copy;
         }
     }
@@ -116,6 +153,9 @@ namespace AutoKeyLight.Core
                 {
                     settings.Lights[i].Address = settings.Lights[i].Address.Trim();
                     settings.Lights[i].Description = (settings.Lights[i].Description ?? "").Trim();
+                    settings.Lights[i].Group = (settings.Lights[i].Group ?? "").Trim();
+                    settings.Lights[i].ProductName = (settings.Lights[i].ProductName ?? "").Trim();
+                    settings.Lights[i].Serial = (settings.Lights[i].Serial ?? "").Trim();
                 }
             }
 
@@ -124,6 +164,13 @@ namespace AutoKeyLight.Core
             settings.HotkeyAuto ??= "";
             settings.HotkeyOn ??= "";
             settings.HotkeyOff ??= "";
+            settings.QuietStart = QuietHours.NormalizeTime(settings.QuietStart, "22:00");
+            settings.QuietEnd = QuietHours.NormalizeTime(settings.QuietEnd, "07:00");
+            settings.QuietDays = QuietHours.NormalizeDays(settings.QuietDays);
+            settings.CameraAppMode = CameraAppFilterPreference.Normalize(settings.CameraAppMode);
+            settings.KnownCameraApps = CameraAppNames.Clean(settings.KnownCameraApps);
+            settings.SelectedCameraApps = CameraAppNames.Clean(settings.SelectedCameraApps);
+            settings.CameraGroups = LightGrouping.Clean(settings.CameraGroups);
             return settings;
         }
     }
