@@ -33,31 +33,15 @@ jobs:
           cache: false
       - name: Test and build
         run: dotnet test CamOnKeyLight.sln -c Release
-      - name: Publish Windows app and per-user installer
+      - name: Package
+        shell: pwsh
+        run: pwsh -NoProfile -File build/package.ps1 -Version 0.7.0
+      - name: Install and uninstall the per-user setup
         shell: pwsh
         run: |
-          $out = Join-Path $env:RUNNER_TEMP "autokeylight-publish"
-          dotnet publish CamOnKeyLight/CamOnKeyLight.csproj -c Release -r win-x64 --self-contained true -p:Version=0.7.0 -p:DebugType=none -p:DebugSymbols=false -o $out
-          Copy-Item LICENSE (Join-Path $out "LICENSE")
-          Copy-Item README.md (Join-Path $out "README.md")
-          if (!(Test-Path (Join-Path $out "CamOnKeyLight.exe"))) { throw "CamOnKeyLight.exe was not published." }
-          $env:AUTOKEYLIGHT_PUBLISH_DIR = $out
-          dotnet test CamOnKeyLight.Core.Tests/CamOnKeyLight.Core.Tests.csproj -c Release --filter PublishedOutputMatchesPackageRules
-          $innoSetup = Join-Path $env:RUNNER_TEMP "innosetup-6.4.3.exe"
-          $innoDir = Join-Path $env:RUNNER_TEMP "innosetup"
-          Invoke-WebRequest -Uri "https://github.com/jrsoftware/issrc/releases/download/is-6_4_3/innosetup-6.4.3.exe" -OutFile $innoSetup
-          Start-Process -FilePath $innoSetup -ArgumentList "/VERYSILENT","/SUPPRESSMSGBOXES","/NORESTART","/DIR=$innoDir" -Wait
-          & (Join-Path $innoDir "ISCC.exe") "/DMyAppVersion=0.7.0" "/DPublishDir=$out" "installer\CamOnKeyLight.iss"
-          $builtSetup = Join-Path (Resolve-Path "installer") "CamOnKeyLight-Setup.exe"
-          if (!(Test-Path $builtSetup)) { throw "The per-user installer was not created." }
+          $ErrorActionPreference = "Stop"
           $dist = Join-Path $env:GITHUB_WORKSPACE "dist"
-          New-Item -ItemType Directory -Force -Path $dist | Out-Null
           $setup = Join-Path $dist "CamOnKeyLight-Setup.exe"
-          Copy-Item $builtSetup $setup
-          $zip = Join-Path $dist "CamOnKeyLight-win-x64.zip"
-          if (Test-Path $zip) { Remove-Item $zip }
-          Add-Type -AssemblyName System.IO.Compression.FileSystem
-          [System.IO.Compression.ZipFile]::CreateFromDirectory($out, $zip)
           $dest = Join-Path $env:LOCALAPPDATA "Programs\CamOnKeyLight"
           $uninstaller = Join-Path $dest "unins000.exe"
           if (Test-Path $uninstaller) { Start-Process -FilePath $uninstaller -ArgumentList "/VERYSILENT","/NORESTART" -Wait }
@@ -83,7 +67,7 @@ jobs:
           while ((Test-Path (Join-Path $dest "CamOnKeyLight.exe")) -and (Get-Date) -lt $deadline) { Start-Sleep -Seconds 1 }
           if (Test-Path (Join-Path $dest "CamOnKeyLight.exe")) { throw "Uninstall left the program in place." }
           if (!(Test-Path $marker)) { throw "Uninstall removed user settings." }
-          Get-Item $setup, $zip | ForEach-Object { Write-Host ("{0} {1} bytes" -f $_.Name, $_.Length) }
+          Get-Item $setup, (Join-Path $dist "CamOnKeyLight-win-x64.zip"), (Join-Path $dist "AutoKeyLight-win-x64.zip") | ForEach-Object { Write-Host ("{0} {1} bytes" -f $_.Name, $_.Length) }
       - name: Upload setup and portable zip
         uses: actions/upload-artifact@v4
         with:
@@ -91,5 +75,6 @@ jobs:
           path: |
             dist/CamOnKeyLight-Setup.exe
             dist/CamOnKeyLight-win-x64.zip
+            dist/AutoKeyLight-win-x64.zip
           retention-days: 7
           if-no-files-found: error
