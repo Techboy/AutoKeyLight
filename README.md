@@ -2,7 +2,7 @@
 
 Automatically turns on and off your Elgato lights when you turn on and off your webcam.
 
-![image](https://user-images.githubusercontent.com/15985195/201465765-105bb629-f124-449f-b946-a6f8cd6eb5ed.png)
+![AutoKeyLight main window](docs/autokeylight-window.png)
 
 The app will try finding your lights IPs from an existing Elgato Control Center installation. If that fails, please add them manually.
 
@@ -14,7 +14,7 @@ To find your keylight IP:
 
 If you know your way around your router, you could get the lights fixed IPs to guarantee reliability.
 
-This fork adds appearance, light control, shortcuts, per-light status, and updates from **Techboy/AutoKeyLight** stable releases. It does not change Windows networking, VPN, routes, or company security software.
+This fork adds appearance, light control, shortcuts, per-light status, light discovery, quiet hours, per-app camera rules, light groups, notifications, and updates from **Techboy/AutoKeyLight** stable releases. It does not change Windows networking, VPN, routes, or company security software.
 
 AutoKeyLight is MIT licensed. Copyright (c) 2022 Gabriel Garcia. See [LICENSE](LICENSE).
 
@@ -49,9 +49,21 @@ The shortcut works while the window is closed. The tray menu shows it next to Au
 
 ## Light status
 
-Each light has its own status: **On**, **Off**, **Unreachable**, **Unexpected reply**, or **Checking…**. The summary line does not say the lights are on after a call fails.
+Each light has its own status: **On**, **Off**, **Unreachable**, **Unexpected reply**, or **Checking…**. The summary line does not say the lights are on after a call fails. The **Description** column is saved with the address, for example "Light on the left". Use **Add** or **Edit**, double-click a row, or press Enter or F2. Delete removes the selected light.
 
 **Retry** checks every light again. A light that does not answer within 5 seconds is shown as unreachable. That is only a connection check. It does not change VPN settings, routes, or security software.
+
+**Find** searches the local network for Elgato lights (`_elg._tcp.local`) and lists the name, address, and port. Lights you already added are skipped. If none answer, the dialog says so. A light that was added from Find remembers its name and serial. If that address later stops responding, the app looks for the same light and updates the address when the match is unique.
+
+The optional **Group** on a light shows in the list and on the tray. The tray can turn one group on or off, or set its brightness to 25, 50, 75, or 100 percent. Automatic on and off still follows the camera for every light unless Options limits that to chosen groups.
+
+## Options
+
+**Options** on the menu bar, and **Options…** on the tray, holds the settings that are not on the main window.
+
+- **Quiet hours** have a start, an end, and days of the week. A range such as 22:00 to 07:00 crosses midnight. While quiet hours are active, automatic mode does not turn lights on. Tray On and Off still work. The tray tooltip and menu show whether quiet hours are active.
+- **Camera apps** can stay on **All apps**, which is the existing behavior. **Only these apps** or **All except these apps** uses the apps Windows reports for the camera, shown by exe name, plus names you type yourself.
+- **Notifications** for a light going offline or coming back are on by default. A change has to hold for about 20 seconds before a balloon is shown, and the first check after startup is quiet. A notice after an update is installed is off until you turn it on.
 
 ## Appearance
 
@@ -59,13 +71,35 @@ Each light has its own status: **On**, **Off**, **Unreachable**, **Unexpected re
 
 ## Install
 
-1. Open the latest stable release of this fork: https://github.com/Techboy/AutoKeyLight/releases/latest
-2. Download `AutoKeyLight-win-x64.zip`. You can compare it with `AutoKeyLight-win-x64.zip.sha256` if you want to check the file yourself.
-3. Extract the zip to a normal folder you can write to, for example `%LOCALAPPDATA%\Programs\AutoKeyLight`. Do not run it from inside the zip, and do not put it in `C:\Windows`.
-4. This build is not code-signed. There is no paid certificate. Windows SmartScreen may say "Windows protected your PC". Choose **More info**, then **Run anyway**. That prompt is expected the first time you run a download of this unsigned app.
-5. The .NET runtime is included. You do not install .NET separately.
+The build is not code-signed. There is no paid certificate. Windows SmartScreen may say "Windows protected your PC" the first time you open the installer or the program. Choose **More info**, then **Run anyway**.
 
-Light addresses, delays, theme, light mode, shortcuts, and the update checkbox are stored in your Windows user profile, not in the program folder. Replacing the program files does not erase them. When a newer version starts, those settings are carried forward.
+### Per-user installer
+
+1. Open the latest stable release: https://github.com/Techboy/AutoKeyLight/releases/latest
+2. Download `AutoKeyLight-Setup.exe`. `AutoKeyLight-Setup.exe.sha256` is the checksum for that file.
+3. Run the setup. It does not ask for administrator approval. It installs to `%LOCALAPPDATA%\Programs\AutoKeyLight`, adds an **Auto Key Light** shortcut to your Start menu, and adds a per-user uninstall entry in Windows Settings.
+4. If Auto Key Light is already running, the setup asks to close it before replacing the program files.
+5. Uninstall removes the program, the Start menu shortcut, and a sign-in startup entry that still points at this install. It leaves `%LOCALAPPDATA%\AutoKeyLight` in place, which is where your settings and update backup live.
+
+### Portable zip
+
+The zip is still published for people who want a folder they can move.
+
+1. Download `AutoKeyLight-win-x64.zip` and, if you want to check it, `AutoKeyLight-win-x64.zip.sha256`.
+2. Extract it to a normal folder you can write to. Do not run it from inside the zip, and do not put it in `C:\Windows`.
+3. The .NET runtime is included.
+
+The automatic updater always downloads that zip, whether you installed with setup or extracted the zip. It replaces the program files in the folder you are running, and it does not switch you from a portable folder to the Start menu install. The setup program is not an automatic update.
+
+## Settings
+
+Light addresses, descriptions, groups, delays, theme, light mode, shortcuts, quiet hours, camera-app rules, notification choices, and the update checkbox are stored in `%LOCALAPPDATA%\AutoKeyLight\user-settings.json`. That file is outside the program folder, so installing, updating, or moving the program does not erase it. A settings file from an older version still loads; the new choices use their defaults.
+
+The first time this version starts, it copies an existing `user.config` from the older per-folder settings location when that file still has your lights. A saved off delay of 0 stays 0. Descriptions start blank until you edit them.
+
+## Sign-in
+
+**Start when I sign in** follows the current user's Startup apps list (`HKCU\...\Run`). It runs after you sign in. It does not run before Windows login, and it does not need administrator approval. The command is stored in quotes under the name `AutoKeyLight`. An older `MyApp` entry that pointed at `AutoKeyLight.exe` is moved to that name and updated to the copy you are running, so a previous folder is not launched after you move or install the app.
 
 ## Updates
 
@@ -84,9 +118,9 @@ This uses the free `windows-latest` runner on this public repository. It does no
 1. Pick the next version, for example `1.2.3`.
 2. On GitHub, create a release in **Techboy/AutoKeyLight**. Tag it `v1.2.3`. Leave it as a normal release, not a pre-release and not a draft.
 3. Publish the release. The release workflow builds the Windows app and attaches `AutoKeyLight-win-x64.zip` and `AutoKeyLight-win-x64.zip.sha256`.
-4. Wait until both files are listed on the release. Installed copies with automatic updates enabled will then pick them up.
+4. Wait until the release lists `AutoKeyLight-win-x64.zip`, `AutoKeyLight-win-x64.zip.sha256`, `AutoKeyLight-Setup.exe`, and `AutoKeyLight-Setup.exe.sha256`. Installed copies with automatic updates enabled download the zip. People installing for the first time can run the setup program.
 
-The version in the program comes from that tag. Do not attach those two files by hand unless the workflow failed; the app expects the checksum and GitHub's digest to describe the same zip.
+The version in the program comes from that tag. The workflow builds the zip and the setup from the same folder. Do not attach those files by hand unless the workflow failed; the app expects the checksum and GitHub's digest to describe the same zip.
 
 ## Build
 

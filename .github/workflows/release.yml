@@ -40,4 +40,14 @@ jobs:
           $hash = (Get-FileHash -Algorithm SHA256 $zip).Hash.ToLowerInvariant()
           $sum = Join-Path $env:RUNNER_TEMP "AutoKeyLight-win-x64.zip.sha256"
           [System.IO.File]::WriteAllText($sum, "$hash  AutoKeyLight-win-x64.zip`n")
-          gh release upload $tag $zip $sum --repo $env:GITHUB_REPOSITORY --clobber
+          $innoSetup = Join-Path $env:RUNNER_TEMP "innosetup-6.4.3.exe"
+          $innoDir = Join-Path $env:RUNNER_TEMP "innosetup"
+          Invoke-WebRequest -Uri "https://github.com/jrsoftware/issrc/releases/download/is-6_4_3/innosetup-6.4.3.exe" -OutFile $innoSetup
+          Start-Process -FilePath $innoSetup -ArgumentList "/VERYSILENT","/SUPPRESSMSGBOXES","/NORESTART","/DIR=$innoDir" -Wait
+          & (Join-Path $innoDir "ISCC.exe") "/DMyAppVersion=$version" "/DPublishDir=$out" "installer\AutoKeyLight.iss"
+          $setup = Join-Path (Resolve-Path "installer") "AutoKeyLight-Setup.exe"
+          if (!(Test-Path $setup)) { throw "The per-user installer was not created." }
+          $setupHash = (Get-FileHash -Algorithm SHA256 $setup).Hash.ToLowerInvariant()
+          $setupSum = Join-Path $env:RUNNER_TEMP "AutoKeyLight-Setup.exe.sha256"
+          [System.IO.File]::WriteAllText($setupSum, "$setupHash  AutoKeyLight-Setup.exe`n")
+          gh release upload $tag $zip $sum $setup $setupSum --repo $env:GITHUB_REPOSITORY --clobber

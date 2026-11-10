@@ -1,4 +1,4 @@
-using System.Collections.Specialized;
+using System.Diagnostics;
 using System.Text;
 using AutoKeyLight.Core;
 using Microsoft.Win32;
@@ -8,14 +8,14 @@ namespace AutoKeyLight
     public partial class MainForm : Form
     {
         private const int WmHotkey = 0x0312;
-        private const string WebcamRegistryKey = @"Software\Microsoft\Windows\CurrentVersion\CapabilityAccessManager\ConsentStore\webcam";
 
         private readonly HttpClient httpClient = new HttpClient();
-        private readonly RegistryKey? startWithWindowsRegistry = Registry.CurrentUser.OpenSubKey(@"SOFTWARE\Microsoft\Windows\CurrentVersion\Run", true);
         private readonly Icon trayIconLit;
         private readonly Icon trayIconUnlit;
         private readonly LightModeController controller = new LightModeController(DateTime.UtcNow);
         private readonly LightStatusBoard board = new LightStatusBoard();
+        private readonly PresenceTracker presence = new PresenceTracker();
+        private readonly HashSet<string> seenCameraApps = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         private readonly Dictionary<string, CancellationTokenSource> lightCalls = new Dictionary<string, CancellationTokenSource>(StringComparer.OrdinalIgnoreCase);
         private readonly HotkeyBook hotkeys = new HotkeyBook();
         private readonly Win32HotkeyRegistrar registrar;
@@ -27,11 +27,14 @@ namespace AutoKeyLight
         private decimal cameraOffDelay;
         private bool settingsReady;
         private bool applyingMode;
+        private bool applyingStartup;
+        private AppUserSettings userSettings = AppUserSettings.CreateDefault();
         private bool capturingShortcut;
         private bool hotkeysBound;
         private bool updateProblem;
         private ThemePalette? palette;
         private EffectiveTheme effectiveTheme = EffectiveTheme.Light;
+        private int discoveryBusy;
 
         public MainForm(string[]? args = null)
         {
@@ -55,6 +58,8 @@ namespace AutoKeyLight
             ToolTip tips = new ToolTip(components);
             tips.SetToolTip(numUpDownOff, "Automatic mode only. After the camera turns off, wait this long before turning the lights off. If the camera comes back during the wait, the lights stay on. Manual Off is immediate. New installs use 1500 ms; a value you already saved is kept.");
             tips.SetToolTip(btnRetry, "Check the lights again and show whether each one responded.");
+            tips.SetToolTip(btnFindLights, "Search this network for Elgato lights and add the ones that are not already listed.");
+            cmsTray.Opening += cmsTray_Opening;
         }
 
         public static Version CurrentVersion()
@@ -66,14 +71,20 @@ namespace AutoKeyLight
         {
             base.OnHandleCreated(e);
             TitleBarTheme.Apply(Handle, effectiveTheme == EffectiveTheme.Dark);
-            if (hotkeysBound)
+            if (settingsReady)
+                BindHotkeys();
+        }
+
+        private void BindHotkeys()
+        {
+            if (hotkeysBound || !IsHandleCreated)
                 return;
 
             hotkeysBound = true;
             IReadOnlyList<string> errors = hotkeys.BindSaved(
-                Properties.Settings.Default.HotkeyAuto,
-                Properties.Settings.Default.HotkeyOn,
-                Properties.Settings.Default.HotkeyOff,
+                userSettings.HotkeyAuto,
+                userSettings.HotkeyOn,
+                userSettings.HotkeyOff,
                 registrar);
             RefreshShortcutLabels();
             if (errors.Count > 0)
@@ -93,29 +104,34 @@ namespace AutoKeyLight
 
         private void MainForm_Load(object sender, EventArgs e)
         {
+            userSettings = UserSettingsFile.Load();
+            foreach (string name in userSettings.KnownCameraApps)
+                seenCameraApps.Add(name);
             ReloadLights();
             ImportElgatoLights();
             board.SyncAddresses(Addresses());
             ShowLightRows();
+            SizeLightColumns();
 
-            numUpDown.Value = cameraOnDelay = Properties.Settings.Default.CameraDelay;
-            decimal savedOffDelay = Properties.Settings.Default.CameraOffDelay;
-            if (savedOffDelay > numUpDownOff.Maximum)
-                savedOffDelay = numUpDownOff.Maximum;
-            numUpDownOff.Value = cameraOffDelay = savedOffDelay;
+            numUpDown.Value = cameraOnDelay = ClampDelay(userSettings.CameraOnDelayMs, numUpDown.Maximum);
+            numUpDownOff.Value = cameraOffDelay = ClampDelay(userSettings.CameraOffDelayMs, numUpDownOff.Maximum);
 
-            cmbTheme.SelectedIndex = ThemeIndex(ThemePreferenceParser.Parse(Properties.Settings.Default.Theme));
-            chkAutomaticUpdates.Checked = Properties.Settings.Default.AutomaticUpdates;
-            LightMode persisted = LightModePreference.Parse(Properties.Settings.Default.LightMode);
+            cmbTheme.SelectedIndex = ThemeIndex(ThemePreferenceParser.Parse(userSettings.Theme));
+            chkAutomaticUpdates.Checked = userSettings.AutomaticUpdates;
+            applyingStartup = true;
+            chkStartWithWindows.Checked = StartupRegistry.RepairCurrentProcess();
+            applyingStartup = false;
+            LightMode persisted = LightModePreference.Parse(userSettings.LightMode);
             rbLightAuto.Checked = persisted == LightMode.Auto;
             rbLightOn.Checked = persisted == LightMode.On;
             rbLightOff.Checked = persisted == LightMode.Off;
             settingsReady = true;
 
-            ApplyTheme(ThemePreferenceParser.Parse(Properties.Settings.Default.Theme));
+            ApplyTheme(ThemePreferenceParser.Parse(userSettings.Theme));
             LightCommand? startup = controller.ApplyStartupMode(persisted, IsWebcamOn(), DateTime.UtcNow);
-            if (startup != null && controller.IsCurrent(startup.Value.Sequence))
-                SendPower(startup.Value.TurnOn);
+            if (startup != null)
+                Dispatch(startup.Value, automatic: false);
+            AnnounceInstalledUpdate();
 
             ShowCamera(IsWebcamOn());
             UpdateModeVisuals();
@@ -131,11 +147,11 @@ namespace AutoKeyLight
             }
 
             SystemEvents.UserPreferenceChanged += SystemThemeChanged;
+            BindHotkeys();
         }
 
         private void MainForm_Shown(object sender, EventArgs e)
         {
-            chkStartWithWindows.Checked = startWithWindowsRegistry != null && startWithWindowsRegistry.GetValue("MyApp") != null;
             if (chkStartWithWindows.Checked || startInBackground)
                 Hide();
         }
@@ -167,9 +183,11 @@ namespace AutoKeyLight
                 cameraOn,
                 DateTime.UtcNow,
                 TimeSpan.FromMilliseconds((double)cameraOnDelay),
-                TimeSpan.FromMilliseconds((double)cameraOffDelay));
-            if (command != null && controller.IsCurrent(command.Value.Sequence))
-                SendPower(command.Value.TurnOn);
+                TimeSpan.FromMilliseconds((double)cameraOffDelay),
+                blockAutomaticOn: QuietHours.IsQuiet(userSettings, DateTime.Now));
+            if (command != null)
+                Dispatch(command.Value, automatic: true);
+            UpdateQuietIndicator();
 
             RefreshAll(userInitiated: false);
             updateCoordinator.NotifyCamera(cameraOn, chkAutomaticUpdates.Checked);
@@ -184,30 +202,81 @@ namespace AutoKeyLight
 
         private bool IsWebcamOn()
         {
-            if (cameraActivityMonitor != null)
-                return cameraActivityMonitor.IsCameraStreaming;
-
-            using RegistryKey? webcamAppsKey = Registry.CurrentUser.OpenSubKey(WebcamRegistryKey);
-            if (webcamAppsKey == null)
-                return false;
-
-            if (AnySubKeyInUse(webcamAppsKey))
-                return true;
-
-            using RegistryKey? nonPackaged = webcamAppsKey.OpenSubKey("NonPackaged");
-            return nonPackaged != null && AnySubKeyInUse(nonPackaged);
+            IReadOnlyList<string> active = ActiveCameraApps();
+            RememberApps(active);
+            return CameraAppPolicy.CountsAsOn(
+                CameraAppFilterPreference.Parse(userSettings.CameraAppMode),
+                userSettings.SelectedCameraApps,
+                active);
         }
 
-        private static bool AnySubKeyInUse(RegistryKey parent)
+        private IReadOnlyList<string> ActiveCameraApps()
         {
-            foreach (string name in parent.GetSubKeyNames())
+            if (cameraActivityMonitor != null)
             {
-                using RegistryKey? subKey = parent.OpenSubKey(name);
-                if (subKey?.GetValue("LastUsedTimeStop") is long timestamp && timestamp == 0)
-                    return true;
+                if (!cameraActivityMonitor.IsCameraStreaming)
+                    return Array.Empty<string>();
+
+                List<string> names = new List<string>();
+                foreach (int processId in cameraActivityMonitor.CopyStreamingProcessIds())
+                {
+                    string? file = ProcessFileName(processId);
+                    if (file != null)
+                        names.Add(file);
+                }
+
+                List<string> cleaned = CameraAppNames.Clean(names);
+                return cleaned.Count == 0 ? new[] { CameraAppNames.Unknown } : cleaned;
             }
 
-            return false;
+            return WebcamConsent.Read(inUseOnly: true);
+        }
+
+        private static string? ProcessFileName(int processId)
+        {
+            try
+            {
+                using Process process = Process.GetProcessById(processId);
+                if (string.IsNullOrWhiteSpace(process.ProcessName))
+                    return null;
+
+                string name = process.ProcessName;
+                return name.EndsWith(".exe", StringComparison.OrdinalIgnoreCase) ? name : name + ".exe";
+            }
+            catch (ArgumentException)
+            {
+                return null;
+            }
+            catch (InvalidOperationException)
+            {
+                return null;
+            }
+            catch (System.ComponentModel.Win32Exception)
+            {
+                return null;
+            }
+        }
+
+        private void RememberApps(IEnumerable<string> active)
+        {
+            bool added = false;
+            foreach (string name in CameraAppNames.Clean(active))
+            {
+                if (name.Equals(CameraAppNames.Unknown, StringComparison.OrdinalIgnoreCase))
+                    continue;
+
+                if (!seenCameraApps.Add(name))
+                    continue;
+
+                if (userSettings.KnownCameraApps.Any(existing => existing.Equals(name, StringComparison.OrdinalIgnoreCase)))
+                    continue;
+
+                userSettings.KnownCameraApps.Add(name);
+                added = true;
+            }
+
+            if (added && settingsReady)
+                SaveUserSettings();
         }
 
         private void ShowCamera(bool cameraOn)
@@ -228,8 +297,8 @@ namespace AutoKeyLight
                 LightCommand? command = controller.SetMode(mode, IsWebcamOn(), DateTime.UtcNow);
                 if (persist && settingsReady)
                 {
-                    Properties.Settings.Default.LightMode = mode.ToString();
-                    Properties.Settings.Default.Save();
+                    userSettings.LightMode = mode.ToString();
+                    SaveUserSettings();
                 }
 
                 rbLightAuto.Checked = mode == LightMode.Auto;
@@ -239,8 +308,8 @@ namespace AutoKeyLight
                 tsmiOn.Checked = mode == LightMode.On;
                 tsmiOff.Checked = mode == LightMode.Off;
                 UpdateModeVisuals();
-                if (command != null && controller.IsCurrent(command.Value.Sequence))
-                    SendPower(command.Value.TurnOn);
+                if (command != null)
+                    Dispatch(command.Value, automatic: mode == LightMode.Auto);
             }
             finally
             {
@@ -253,7 +322,7 @@ namespace AutoKeyLight
             LightControlSnapshot snapshot = LightModeController.Describe(controller.Mode);
             lblMode.Text = snapshot.Detail;
             Text = snapshot.Title;
-            niTray.Text = snapshot.Title.Length <= 63 ? snapshot.Title : "Auto Key Light";
+            UpdateQuietIndicator();
             lblMode.ForeColor = controller.Mode switch
             {
                 LightMode.On => StatusOnColor(),
@@ -274,17 +343,36 @@ namespace AutoKeyLight
             SetLightMode(mode, true);
         }
 
-        private void SendPower(bool turnOn)
+        private void Dispatch(LightCommand command, bool automatic)
         {
-            foreach (LightTarget target in LightEndpoint.ForEachLight(Addresses(), turnOn ? LightPower.On : LightPower.Off))
-                _ = PutLightAsync(target.Address, turnOn);
+            if (!controller.IsCurrent(command.Sequence))
+                return;
+
+            if (automatic && command.TurnOn && QuietHours.IsQuiet(userSettings, DateTime.Now))
+                return;
+
+            SendPower(command.TurnOn, automatic);
         }
 
-        private async Task PutLightAsync(string address, bool turnOn)
+        private void SendPower(bool turnOn, bool automatic)
+        {
+            IEnumerable<string> addresses = automatic
+                ? LightGrouping.AutomaticAddresses(userSettings.Lights, userSettings.AllGroupsFollowCamera, userSettings.CameraGroups)
+                : userSettings.Lights.Select(light => light.Address);
+            SendBody(addresses, LightEndpoint.PutBody(turnOn));
+        }
+
+        private void SendBody(IEnumerable<string> addresses, string body)
+        {
+            foreach (LightTarget target in LightEndpoint.ForEachLight(addresses, LightPower.On))
+                _ = PutBodyAsync(target.Address, body);
+        }
+
+        private async Task PutBodyAsync(string address, string body)
         {
             try
             {
-                using StringContent content = new StringContent(LightEndpoint.PutBody(turnOn), Encoding.UTF8, "application/json");
+                using StringContent content = new StringContent(body, Encoding.UTF8, "application/json");
                 await httpClient.PutAsync(LightEndpoint.LightsUrl(address), content);
             }
             catch
@@ -360,6 +448,7 @@ namespace AutoKeyLight
                     return;
 
                 board.TryComplete(address, attempt, state, detail);
+                NotePresence(address, state);
                 if (lightCalls.TryGetValue(address, out CancellationTokenSource? current) && current == cts)
                 {
                     lightCalls.Remove(address);
@@ -394,6 +483,8 @@ namespace AutoKeyLight
                 {
                     ListViewItem item = new ListViewItem(row.Address);
                     item.Name = row.Address;
+                    item.SubItems.Add(DescriptionFor(row.Address));
+                    item.SubItems.Add(GroupFor(row.Address));
                     item.SubItems.Add(row.StatusText);
                     item.Selected = string.Equals(row.Address, selected, StringComparison.OrdinalIgnoreCase);
                     lvLights.Items.Add(item);
@@ -405,10 +496,9 @@ namespace AutoKeyLight
             {
                 for (int i = 0; i < rows.Count; i++)
                 {
-                    if (lvLights.Items[i].SubItems.Count < 2)
-                        lvLights.Items[i].SubItems.Add(rows[i].StatusText);
-                    else if (lvLights.Items[i].SubItems[1].Text != rows[i].StatusText)
-                        lvLights.Items[i].SubItems[1].Text = rows[i].StatusText;
+                    EnsureSubItem(lvLights.Items[i], 1, DescriptionFor(rows[i].Address));
+                    EnsureSubItem(lvLights.Items[i], 2, GroupFor(rows[i].Address));
+                    EnsureSubItem(lvLights.Items[i], 3, rows[i].StatusText);
                 }
             }
 
@@ -424,7 +514,18 @@ namespace AutoKeyLight
             lblDetail.Visible = board.FirstProblem != null;
             lblDetail.ForeColor = ErrorColor();
             btnRetry.Enabled = rows.Count > 0;
-            btnRemoveLight.Enabled = lvLights.SelectedItems.Count > 0;
+            bool selectedRow = lvLights.SelectedItems.Count > 0;
+            btnRemoveLight.Enabled = selectedRow;
+            btnEditLight.Enabled = selectedRow;
+        }
+
+        private static void EnsureSubItem(ListViewItem item, int index, string text)
+        {
+            while (item.SubItems.Count <= index)
+                item.SubItems.Add("");
+
+            if (item.SubItems[index].Text != text)
+                item.SubItems[index].Text = text;
         }
 
         private IEnumerable<string> Addresses()
@@ -444,25 +545,51 @@ namespace AutoKeyLight
         private void ReloadLights()
         {
             lvLights.Items.Clear();
-            if (Properties.Settings.Default.IPs == null)
-                Properties.Settings.Default.IPs = new StringCollection();
-
-            foreach (string? address in Properties.Settings.Default.IPs)
+            foreach (LightRecord light in userSettings.Lights)
             {
-                if (!string.IsNullOrWhiteSpace(address))
-                    AddAddress(address.Trim());
+                if (!string.IsNullOrWhiteSpace(light.Address))
+                    AddAddress(light.Address, light.Description);
             }
         }
 
-        private void AddAddress(string address)
+        private void AddAddress(string address, string description)
         {
             if (lvLights.Items.ContainsKey(address))
                 return;
 
             ListViewItem item = new ListViewItem(address);
             item.Name = address;
+            item.SubItems.Add(description);
+            item.SubItems.Add(GroupFor(address));
             item.SubItems.Add("Not checked");
             lvLights.Items.Add(item);
+        }
+
+        private string DescriptionFor(string address)
+        {
+            foreach (LightRecord light in userSettings.Lights)
+            {
+                if (string.Equals(light.Address, address, StringComparison.OrdinalIgnoreCase))
+                    return light.Description;
+            }
+
+            return "";
+        }
+
+        private string GroupFor(string address)
+        {
+            return RecordFor(address)?.Group ?? "";
+        }
+
+        private LightRecord? RecordFor(string address)
+        {
+            foreach (LightRecord light in userSettings.Lights)
+            {
+                if (string.Equals(light.Address, address, StringComparison.OrdinalIgnoreCase))
+                    return light;
+            }
+
+            return null;
         }
 
         private void ImportElgatoLights()
@@ -492,7 +619,7 @@ namespace AutoKeyLight
                                 foreach (System.Xml.XmlNode attribute in accessory.ChildNodes)
                                 {
                                     if (attribute.Name == "IpAddress")
-                                        AddAddress(attribute.InnerText.Trim());
+                                        AddAddress(attribute.InnerText.Trim(), DescriptionFor(attribute.InnerText.Trim()));
                                 }
                             }
                         }
@@ -509,12 +636,12 @@ namespace AutoKeyLight
 
         private void btnAddLight_Click(object sender, EventArgs e)
         {
-            string? address = Prompt("Light IP", "New Light");
-            if (string.IsNullOrWhiteSpace(address))
+            if (PromptLight(null) is not LightRecord light)
                 return;
 
-            Properties.Settings.Default.IPs.Add(address.Trim());
-            Properties.Settings.Default.Save();
+            userSettings.Lights.RemoveAll(existing => string.Equals(existing.Address, light.Address, StringComparison.OrdinalIgnoreCase));
+            userSettings.Lights.Add(light);
+            SaveUserSettings();
             ReloadLights();
             ImportElgatoLights();
             board.SyncAddresses(Addresses());
@@ -522,13 +649,57 @@ namespace AutoKeyLight
             RefreshAll(true);
         }
 
+        private void btnEditLight_Click(object sender, EventArgs e)
+        {
+            EditSelectedLight();
+        }
+
+        private void lvLights_KeyDown(object sender, KeyEventArgs e)
+        {
+            if (e.KeyCode == Keys.Delete)
+            {
+                btnRemoveLight_Click(sender, e);
+                e.Handled = true;
+            }
+            else if (e.KeyCode is Keys.Enter or Keys.F2)
+            {
+                EditSelectedLight();
+                e.Handled = true;
+            }
+        }
+
+        private void lvLights_DoubleClick(object sender, EventArgs e)
+        {
+            EditSelectedLight();
+        }
+
+        private void EditSelectedLight()
+        {
+            if (SelectedAddress() is not string address)
+                return;
+
+            if (PromptLight(RecordFor(address) ?? new LightRecord(address, DescriptionFor(address))) is not LightRecord edited)
+                return;
+
+            if (!string.Equals(address, edited.Address, StringComparison.OrdinalIgnoreCase))
+                userSettings.Lights.RemoveAll(existing => string.Equals(existing.Address, address, StringComparison.OrdinalIgnoreCase));
+
+            userSettings.Lights.RemoveAll(existing => string.Equals(existing.Address, edited.Address, StringComparison.OrdinalIgnoreCase));
+            userSettings.Lights.Add(edited);
+            SaveUserSettings();
+            ReloadLights();
+            ImportElgatoLights();
+            board.SyncAddresses(Addresses());
+            ShowLightRows();
+        }
+
         private void btnRemoveLight_Click(object sender, EventArgs e)
         {
             if (SelectedAddress() is not string address)
                 return;
 
-            Properties.Settings.Default.IPs.Remove(address);
-            Properties.Settings.Default.Save();
+            userSettings.Lights.RemoveAll(existing => string.Equals(existing.Address, address, StringComparison.OrdinalIgnoreCase));
+            SaveUserSettings();
             ReloadLights();
             board.SyncAddresses(Addresses());
             ShowLightRows();
@@ -540,65 +711,212 @@ namespace AutoKeyLight
             RefreshAll(userInitiated: true);
         }
 
-        private void lvLights_SelectedIndexChanged(object sender, EventArgs e)
+        private void btnFindLights_Click(object sender, EventArgs e)
         {
-            btnRemoveLight.Enabled = lvLights.SelectedItems.Count > 0;
+            AddFoundLights(false);
         }
 
-        private string? Prompt(string text, string caption)
+        private void menuOptions_Click(object sender, EventArgs e)
         {
-            using Form prompt = new Form
+            ShowOptions();
+        }
+
+        private void lvLights_SelectedIndexChanged(object sender, EventArgs e)
+        {
+            bool selected = lvLights.SelectedItems.Count > 0;
+            btnRemoveLight.Enabled = selected;
+            btnEditLight.Enabled = selected;
+        }
+
+        private LightRecord? PromptLight(LightRecord? existing)
+        {
+            using Form prompt = new Form();
+            const int logicalWidth = 420;
+            DialogShell.Prepare(prompt, existing == null ? "Add light" : "Edit light", logicalWidth);
+            TableLayoutPanel table = DialogShell.Content(logicalWidth);
+            Label addressLabel = new Label { AutoSize = true, Text = "&Address" };
+            TextBox addressBox = DialogShell.Field(existing?.Address ?? "", "Address", logicalWidth);
+            Label descriptionLabel = new Label { AutoSize = true, Text = "&Description" };
+            TextBox descriptionBox = DialogShell.Field(existing?.Description ?? "", "Description", logicalWidth);
+            Label groupLabel = new Label { AutoSize = true, Text = "&Group" };
+            TextBox groupBox = DialogShell.Field(existing?.Group ?? "", "Group", logicalWidth);
+            string serial = existing?.Serial ?? "";
+            string product = existing?.ProductName ?? "";
+            Button find = DialogShell.CommandButton("Find lights", DialogResult.None);
+            find.Click += (_, _) =>
             {
-                Width = 360,
-                Height = 160,
-                FormBorderStyle = FormBorderStyle.FixedDialog,
-                Text = caption,
-                StartPosition = FormStartPosition.CenterScreen,
-                MaximizeBox = false,
-                MinimizeBox = false
+                using FindLightsForm found = new FindLightsForm(userSettings.Lights.Select(light => light.Address).ToList(), single: true);
+                ApplyDialogTheme(found);
+                if (found.ShowDialog(prompt) != DialogResult.OK || found.Chosen.Count == 0)
+                    return;
+
+                DiscoveredLight pick = found.Chosen[0];
+                addressBox.Text = pick.Address;
+                if (string.IsNullOrWhiteSpace(descriptionBox.Text))
+                    descriptionBox.Text = pick.Name;
+                serial = pick.Serial;
+                product = string.IsNullOrWhiteSpace(pick.ProductName) ? pick.Name : pick.ProductName;
             };
-            Label textLabel = new Label { Left = 16, Top = 16, Width = 310, Text = text };
-            TextBox textBox = new TextBox { Left = 16, Top = 40, Width = 310 };
-            Button confirmation = new Button { Text = "Ok", Left = 16, Width = 80, Top = 76, DialogResult = DialogResult.OK };
-            Button cancel = new Button { Text = "Cancel", Left = 104, Width = 80, Top = 76, DialogResult = DialogResult.Cancel };
-            prompt.Controls.Add(textBox);
-            prompt.Controls.Add(confirmation);
-            prompt.Controls.Add(textLabel);
-            prompt.Controls.Add(cancel);
+            Button confirmation = DialogShell.CommandButton("OK", DialogResult.OK);
+            Button cancel = DialogShell.CommandButton("Cancel", DialogResult.Cancel);
             prompt.AcceptButton = confirmation;
             prompt.CancelButton = cancel;
+            DialogShell.AddRow(table, addressLabel, new Padding(0, 0, 0, 4));
+            DialogShell.AddRow(table, addressBox, new Padding(0, 0, 0, 8));
+            DialogShell.AddRow(table, descriptionLabel, new Padding(0, 0, 0, 4));
+            DialogShell.AddRow(table, descriptionBox, new Padding(0, 0, 0, 8));
+            DialogShell.AddRow(table, groupLabel, new Padding(0, 0, 0, 4));
+            DialogShell.AddRow(table, groupBox, new Padding(0, 0, 0, 8));
+            DialogShell.AddRow(table, find, new Padding(0, 0, 0, 4));
+            DialogShell.AddRow(table, DialogShell.ButtonRow(logicalWidth, cancel, confirmation), Padding.Empty);
+            prompt.Controls.Add(table);
+            prompt.ResumeLayout(true);
+            ApplyDialogTheme(prompt);
+
+            if (prompt.ShowDialog(Visible ? this : null) != DialogResult.OK || string.IsNullOrWhiteSpace(addressBox.Text))
+                return null;
+
+            return new LightRecord(addressBox.Text, descriptionBox.Text, groupBox.Text, product, serial);
+        }
+
+        private void helpAbout_Click(object sender, EventArgs e)
+        {
+            using AboutForm about = new AboutForm(CurrentVersion());
             if (palette != null)
             {
-                ThemeApplier.Apply(prompt, palette.Value);
-                prompt.HandleCreated += (_, _) => TitleBarTheme.Apply(prompt.Handle, effectiveTheme == EffectiveTheme.Dark);
+                ThemeApplier.Apply(about, palette.Value);
+                about.HandleCreated += (_, _) => TitleBarTheme.Apply(about.Handle, effectiveTheme == EffectiveTheme.Dark);
             }
 
-            return prompt.ShowDialog(Visible ? this : null) == DialogResult.OK ? textBox.Text.Trim() : null;
+            about.ShowDialog(this);
+        }
+
+        private void helpElgato_Click(object sender, EventArgs e)
+        {
+            Program.OpenElgatoWebsite();
+        }
+
+        private void SizeLightColumns()
+        {
+            int width = Math.Max(180, lvLights.ClientSize.Width - 4);
+            colLight.Width = (int)(width * 0.28);
+            colDescription.Width = (int)(width * 0.32);
+            colGroup.Width = (int)(width * 0.18);
+            colStatus.Width = Math.Max(80, width - colLight.Width - colDescription.Width - colGroup.Width);
+        }
+
+        private void StyleChrome()
+        {
+            lvLights.OwnerDraw = true;
+            lvLights.Invalidate();
+            cmbTheme.FlatStyle = FlatStyle.Flat;
+            cmbTheme.DrawMode = DrawMode.OwnerDrawFixed;
+            if (palette == null)
+            {
+                menuMain.Renderer = new ToolStripProfessionalRenderer();
+                menuMain.BackColor = SystemColors.MenuBar;
+                menuMain.ForeColor = SystemColors.MenuText;
+                return;
+            }
+
+            ThemeApplier.ApplyMenu(menuMain, palette.Value);
+        }
+
+        private void lvLights_DrawColumnHeader(object sender, DrawListViewColumnHeaderEventArgs e)
+        {
+            Color back = palette?.ButtonBackground.ToColor() ?? SystemColors.Control;
+            Color fore = palette?.Foreground.ToColor() ?? SystemColors.ControlText;
+            Color line = palette?.Border.ToColor() ?? SystemColors.ControlDark;
+            using SolidBrush brush = new SolidBrush(back);
+            e.Graphics.FillRectangle(brush, e.Bounds);
+            Rectangle text = new Rectangle(e.Bounds.X + 6, e.Bounds.Y, e.Bounds.Width - 8, e.Bounds.Height);
+            TextRenderer.DrawText(e.Graphics, e.Header?.Text ?? "", Font, text, fore, TextFormatFlags.VerticalCenter | TextFormatFlags.Left | TextFormatFlags.EndEllipsis);
+            using Pen pen = new Pen(line);
+            e.Graphics.DrawLine(pen, e.Bounds.Left, e.Bounds.Bottom - 1, e.Bounds.Right, e.Bounds.Bottom - 1);
+        }
+
+        private void lvLights_DrawItem(object sender, DrawListViewItemEventArgs e)
+        {
+        }
+
+        private void lvLights_DrawSubItem(object sender, DrawListViewSubItemEventArgs e)
+        {
+            bool selected = e.Item.Selected;
+            Color back = selected
+                ? palette?.MenuHighlight.ToColor() ?? SystemColors.Highlight
+                : palette?.InputBackground.ToColor() ?? SystemColors.Window;
+            Color fore = selected
+                ? palette?.MenuHighlightText.ToColor() ?? SystemColors.HighlightText
+                : palette?.InputForeground.ToColor() ?? SystemColors.WindowText;
+            using SolidBrush brush = new SolidBrush(back);
+            e.Graphics.FillRectangle(brush, e.Bounds);
+            Rectangle text = new Rectangle(e.Bounds.X + 6, e.Bounds.Y, Math.Max(0, e.Bounds.Width - 8), e.Bounds.Height);
+            TextRenderer.DrawText(e.Graphics, e.SubItem?.Text ?? "", Font, text, fore, TextFormatFlags.VerticalCenter | TextFormatFlags.Left | TextFormatFlags.EndEllipsis);
+            if (selected && e.ColumnIndex == 0 && lvLights.Focused)
+                e.DrawFocusRectangle(e.Bounds);
+        }
+
+        private void cmbTheme_DrawItem(object sender, DrawItemEventArgs e)
+        {
+            if (e.Index < 0)
+                return;
+
+            bool selected = (e.State & DrawItemState.Selected) != 0;
+            Color back = selected
+                ? palette?.MenuHighlight.ToColor() ?? SystemColors.Highlight
+                : palette?.InputBackground.ToColor() ?? SystemColors.Window;
+            Color fore = selected
+                ? palette?.MenuHighlightText.ToColor() ?? SystemColors.HighlightText
+                : palette?.InputForeground.ToColor() ?? SystemColors.WindowText;
+            using SolidBrush brush = new SolidBrush(back);
+            e.Graphics.FillRectangle(brush, e.Bounds);
+            TextRenderer.DrawText(e.Graphics, cmbTheme.Items[e.Index]?.ToString() ?? "", Font, e.Bounds, fore, TextFormatFlags.VerticalCenter | TextFormatFlags.Left);
+            if ((e.State & DrawItemState.Focus) != 0)
+                e.DrawFocusRectangle();
         }
 
         private void chkStartWithWindows_CheckedChanged(object sender, EventArgs e)
         {
-            if (startWithWindowsRegistry == null)
+            if (!settingsReady || applyingStartup)
                 return;
 
-            if (chkStartWithWindows.Checked)
-                startWithWindowsRegistry.SetValue("MyApp", Application.ExecutablePath);
-            else
-                startWithWindowsRegistry.DeleteValue("MyApp", false);
+            applyingStartup = true;
+            chkStartWithWindows.Checked = StartupRegistry.ApplyForCurrentProcess(chkStartWithWindows.Checked);
+            applyingStartup = false;
         }
 
         private void numUpDown_ValueChanged(object sender, EventArgs e)
         {
+            if (!settingsReady)
+                return;
+
             cameraOnDelay = numUpDown.Value;
-            Properties.Settings.Default.CameraDelay = cameraOnDelay;
-            Properties.Settings.Default.Save();
+            userSettings.CameraOnDelayMs = cameraOnDelay;
+            SaveUserSettings();
         }
 
         private void numUpDownOff_ValueChanged(object sender, EventArgs e)
         {
+            if (!settingsReady)
+                return;
+
             cameraOffDelay = numUpDownOff.Value;
-            Properties.Settings.Default.CameraOffDelay = cameraOffDelay;
-            Properties.Settings.Default.Save();
+            userSettings.CameraOffDelayMs = cameraOffDelay;
+            SaveUserSettings();
+        }
+
+        private static decimal ClampDelay(decimal value, decimal maximum)
+        {
+            if (value < 0)
+                return 0;
+            if (value > maximum)
+                return maximum;
+            return value;
+        }
+
+        private void SaveUserSettings()
+        {
+            UserSettingsFile.Save(userSettings);
         }
 
         private void niTray_DoubleClick(object sender, EventArgs e)
@@ -632,6 +950,12 @@ namespace AutoKeyLight
                     break;
                 case "tsmiShortcuts":
                     ShowShortcuts();
+                    break;
+                case "tsmiFindLights":
+                    AddFoundLights(true);
+                    break;
+                case "tsmiOptions":
+                    ShowOptions();
                     break;
             }
         }
@@ -676,17 +1000,17 @@ namespace AutoKeyLight
             switch (mode)
             {
                 case LightMode.On:
-                    Properties.Settings.Default.HotkeyOn = text;
+                    userSettings.HotkeyOn = text;
                     break;
                 case LightMode.Off:
-                    Properties.Settings.Default.HotkeyOff = text;
+                    userSettings.HotkeyOff = text;
                     break;
                 default:
-                    Properties.Settings.Default.HotkeyAuto = text;
+                    userSettings.HotkeyAuto = text;
                     break;
             }
 
-            Properties.Settings.Default.Save();
+            SaveUserSettings();
             RefreshShortcutLabels();
             if (!result.Applied && result.Error != null)
                 ShowUpdate(new UpdateUi(result.Error, btnCheckUpdates.Enabled, btnInstallUpdate.Enabled, true));
@@ -710,8 +1034,8 @@ namespace AutoKeyLight
                 return;
 
             ThemePreference preference = SelectedTheme();
-            Properties.Settings.Default.Theme = preference.ToString();
-            Properties.Settings.Default.Save();
+            userSettings.Theme = preference.ToString();
+            SaveUserSettings();
             ApplyTheme(preference);
         }
 
@@ -748,6 +1072,7 @@ namespace AutoKeyLight
             }
 
             TitleBarTheme.Apply(Handle, effectiveTheme == EffectiveTheme.Dark);
+            StyleChrome();
             ShowCamera(IsWebcamOn());
             UpdateModeVisuals();
             ShowLightRows();
@@ -770,8 +1095,8 @@ namespace AutoKeyLight
             if (!settingsReady)
                 return;
 
-            Properties.Settings.Default.AutomaticUpdates = chkAutomaticUpdates.Checked;
-            Properties.Settings.Default.Save();
+            userSettings.AutomaticUpdates = chkAutomaticUpdates.Checked;
+            SaveUserSettings();
             if (chkAutomaticUpdates.Checked)
             {
                 updateTimer.Interval = 6 * 60 * 60 * 1000;
@@ -840,6 +1165,215 @@ namespace AutoKeyLight
             catch
             {
             }
+        }
+
+        private void UpdateQuietIndicator()
+        {
+            string title = LightModeController.Describe(controller.Mode).Title;
+            bool quiet = QuietHours.IsQuiet(userSettings, DateTime.Now);
+            niTray.Text = QuietHours.TrayTip(title, quiet);
+            tsmiQuiet.Text = QuietHours.MenuLabel(userSettings, DateTime.Now);
+        }
+
+        private void NotePresence(string address, LightLinkState state)
+        {
+            if (state is not (LightLinkState.On or LightLinkState.Off or LightLinkState.Unreachable or LightLinkState.UnexpectedReply))
+                return;
+
+            bool reachable = state is LightLinkState.On or LightLinkState.Off;
+            PresenceNotice? notice = presence.Observe(address, reachable, DateTime.UtcNow);
+            if (notice == null)
+                return;
+
+            if (userSettings.NotifyLightPresence)
+            {
+                string label = DescriptionFor(notice.Value.Address);
+                niTray.ShowBalloonTip(
+                    4000,
+                    PresenceText.Title(notice.Value.Online),
+                    PresenceText.Body(string.IsNullOrWhiteSpace(label) ? notice.Value.Address : label, notice.Value.Online),
+                    notice.Value.Online ? ToolTipIcon.Info : ToolTipIcon.Warning);
+            }
+
+            if (!notice.Value.Online)
+                _ = RediscoverOfflineAsync();
+        }
+
+        private async Task RediscoverOfflineAsync()
+        {
+            if (Interlocked.CompareExchange(ref discoveryBusy, 1, 0) != 0)
+                return;
+
+            try
+            {
+                DiscoveryResult result = await ElgatoBrowser.SearchAsync(TimeSpan.FromSeconds(3), CancellationToken.None);
+                if (IsDisposed || result.Lights.Count == 0)
+                    return;
+
+                void Apply()
+                {
+                    if (IsDisposed)
+                        return;
+
+                    bool changed = false;
+                    foreach (LightRecord light in userSettings.Lights.ToList())
+                    {
+                        string? replacement = ElgatoDiscovery.ReplacementAddress(light, userSettings.Lights, result.Lights);
+                        if (replacement == null)
+                            continue;
+
+                        light.Address = replacement;
+                        changed = true;
+                    }
+
+                    if (!changed)
+                        return;
+
+                    SaveUserSettings();
+                    ReloadLights();
+                    board.SyncAddresses(Addresses());
+                    ShowLightRows();
+                    RefreshAll(true);
+                }
+
+                if (InvokeRequired)
+                    BeginInvoke(Apply);
+                else
+                    Apply();
+            }
+            catch (OperationCanceledException)
+            {
+            }
+            catch (System.Net.Sockets.SocketException)
+            {
+            }
+            finally
+            {
+                Interlocked.Exchange(ref discoveryBusy, 0);
+            }
+        }
+
+        private void AnnounceInstalledUpdate()
+        {
+            try
+            {
+                string path = Path.Combine(UpdateInstaller.UpdatesRoot(), "just-installed.txt");
+                if (!File.Exists(path))
+                    return;
+
+                string version = File.ReadAllText(path).Trim();
+                File.Delete(path);
+                if (userSettings.NotifyOnUpdate && version.Length > 0)
+                    niTray.ShowBalloonTip(5000, "Update installed", "Auto Key Light " + version + " is now running.", ToolTipIcon.Info);
+            }
+            catch (IOException)
+            {
+            }
+        }
+
+        private void ApplyDialogTheme(Form dialog)
+        {
+            if (palette != null)
+            {
+                ThemeApplier.Apply(dialog, palette.Value);
+                dialog.HandleCreated += (_, _) => TitleBarTheme.Apply(dialog.Handle, effectiveTheme == EffectiveTheme.Dark);
+            }
+            else
+            {
+                ThemeApplier.ApplySystem(dialog);
+            }
+        }
+
+        private void AddFoundLights(bool fromTray)
+        {
+            using FindLightsForm found = new FindLightsForm(userSettings.Lights.Select(light => light.Address).ToList(), single: false);
+            ApplyDialogTheme(found);
+            IWin32Window? owner = Visible && !fromTray ? this : null;
+            if (found.ShowDialog(owner) != DialogResult.OK)
+                return;
+
+            bool changed = false;
+            foreach (DiscoveredLight light in found.Chosen)
+            {
+                bool exists = userSettings.Lights.Any(saved => LightEndpoint.Host(saved.Address).Equals(LightEndpoint.Host(light.Address), StringComparison.OrdinalIgnoreCase));
+                if (exists)
+                    continue;
+
+                string product = string.IsNullOrWhiteSpace(light.ProductName) ? light.Name : light.ProductName;
+                userSettings.Lights.Add(new LightRecord(light.Address, light.Name, "", product, light.Serial));
+                changed = true;
+            }
+
+            if (!changed)
+                return;
+
+            SaveUserSettings();
+            ReloadLights();
+            board.SyncAddresses(Addresses());
+            ShowLightRows();
+            RefreshAll(true);
+        }
+
+        private void ShowOptions()
+        {
+            AppUserSettings edited = userSettings.Clone();
+            List<string> observed = seenCameraApps.Concat(WebcamConsent.Read(inUseOnly: false)).ToList();
+            using OptionsForm dialog = new OptionsForm(edited, LightGrouping.Names(userSettings.Lights), observed);
+            ApplyDialogTheme(dialog);
+            if (dialog.ShowDialog(Visible ? this : null) != DialogResult.OK)
+                return;
+
+            userSettings = edited;
+            seenCameraApps.Clear();
+            foreach (string name in userSettings.KnownCameraApps)
+                seenCameraApps.Add(name);
+            SaveUserSettings();
+            UpdateQuietIndicator();
+        }
+
+        private void cmsTray_Opening(object? sender, System.ComponentModel.CancelEventArgs e)
+        {
+            RebuildTrayGroups();
+            UpdateQuietIndicator();
+            if (palette != null)
+                ThemeApplier.ApplyMenu(cmsTray, palette.Value);
+            else
+                ThemeApplier.ApplySystemMenu(cmsTray);
+        }
+
+        private void RebuildTrayGroups()
+        {
+            tsmiGroups.DropDownItems.Clear();
+            IReadOnlyList<string> names = LightGrouping.Names(userSettings.Lights);
+            bool ungrouped = userSettings.Lights.Any(light => string.IsNullOrWhiteSpace(light.Group));
+            tsmiGroups.Visible = names.Count > 0;
+            foreach (string name in names)
+                tsmiGroups.DropDownItems.Add(GroupMenu(name, name));
+
+            if (names.Count > 0 && ungrouped)
+                tsmiGroups.DropDownItems.Add(GroupMenu("", LightGrouping.UngroupedLabel));
+        }
+
+        private ToolStripMenuItem GroupMenu(string group, string label)
+        {
+            ToolStripMenuItem menu = new ToolStripMenuItem(label);
+            List<string> addresses = LightGrouping.Members(userSettings.Lights, group).Select(light => light.Address).ToList();
+            menu.DropDownItems.Add(GroupCommand("On", addresses, LightEndpoint.PutBody(true)));
+            menu.DropDownItems.Add(GroupCommand("Off", addresses, LightEndpoint.PutBody(false)));
+            foreach (int level in new[] { 25, 50, 75, 100 })
+            {
+                int brightness = level;
+                menu.DropDownItems.Add(GroupCommand("Brightness " + brightness + "%", addresses, LightEndpoint.BrightnessBody(brightness)));
+            }
+
+            return menu;
+        }
+
+        private ToolStripMenuItem GroupCommand(string text, IReadOnlyList<string> addresses, string body)
+        {
+            ToolStripMenuItem item = new ToolStripMenuItem(text);
+            item.Click += (_, _) => SendBody(addresses, body);
+            return item;
         }
 
         private Color StatusOnColor()

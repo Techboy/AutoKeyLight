@@ -53,6 +53,14 @@ namespace AutoKeyLight
                     return;
                 }
 
+                try
+                {
+                    File.WriteAllText(Path.Combine(UpdatesRoot(), "just-installed.txt"), ReleaseVersion.Format(request.ExpectedVersion));
+                }
+                catch (IOException)
+                {
+                }
+
                 Process.Start(new ProcessStartInfo
                 {
                     FileName = exe,

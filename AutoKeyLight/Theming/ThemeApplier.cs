@@ -61,9 +61,72 @@ namespace AutoKeyLight
         public override Color ImageMarginGradientEnd => palette.MenuBackground.ToColor();
         public override Color SeparatorDark => palette.Border.ToColor();
         public override Color SeparatorLight => palette.MenuBackground.ToColor();
+        public override Color MenuStripGradientBegin => palette.Background.ToColor();
+        public override Color MenuStripGradientEnd => palette.Background.ToColor();
+        public override Color ToolStripGradientBegin => palette.Background.ToColor();
+        public override Color ToolStripGradientMiddle => palette.Background.ToColor();
+        public override Color ToolStripGradientEnd => palette.Background.ToColor();
         public override Color CheckBackground => palette.MenuHighlight.ToColor();
         public override Color CheckSelectedBackground => palette.MenuHighlight.ToColor();
         public override Color CheckPressedBackground => palette.MenuHighlight.ToColor();
+        public override Color MenuItemPressedGradientBegin => palette.MenuHighlight.ToColor();
+        public override Color MenuItemPressedGradientMiddle => palette.MenuHighlight.ToColor();
+        public override Color MenuItemPressedGradientEnd => palette.MenuHighlight.ToColor();
+        public override Color ButtonSelectedHighlight => palette.MenuHighlight.ToColor();
+        public override Color ButtonSelectedGradientBegin => palette.MenuHighlight.ToColor();
+        public override Color ButtonSelectedGradientMiddle => palette.MenuHighlight.ToColor();
+        public override Color ButtonSelectedGradientEnd => palette.MenuHighlight.ToColor();
+        public override Color ButtonPressedHighlight => palette.MenuHighlight.ToColor();
+        public override Color ButtonPressedGradientBegin => palette.MenuHighlight.ToColor();
+        public override Color ButtonPressedGradientMiddle => palette.MenuHighlight.ToColor();
+        public override Color ButtonPressedGradientEnd => palette.MenuHighlight.ToColor();
+    }
+
+    internal sealed class PaletteMenuRenderer : ToolStripProfessionalRenderer
+    {
+        private readonly ThemePalette palette;
+
+        public PaletteMenuRenderer(ThemePalette palette)
+            : base(new PaletteColorTable(palette))
+        {
+            this.palette = palette;
+            RoundedEdges = false;
+        }
+
+        protected override void OnRenderToolStripBackground(ToolStripRenderEventArgs e)
+        {
+            Color back = e.ToolStrip is ToolStripDropDown
+                ? palette.MenuBackground.ToColor()
+                : palette.Background.ToColor();
+            using SolidBrush brush = new SolidBrush(back);
+            e.Graphics.FillRectangle(brush, e.AffectedBounds);
+        }
+
+        protected override void OnRenderMenuItemBackground(ToolStripItemRenderEventArgs e)
+        {
+            bool highlighted = e.Item.Selected || e.Item.Pressed;
+            Color back = highlighted
+                ? palette.MenuHighlight.ToColor()
+                : e.Item.IsOnDropDown
+                    ? palette.MenuBackground.ToColor()
+                    : palette.Background.ToColor();
+            using SolidBrush brush = new SolidBrush(back);
+            e.Graphics.FillRectangle(brush, new Rectangle(Point.Empty, e.Item.Size));
+        }
+
+        protected override void OnRenderItemText(ToolStripItemTextRenderEventArgs e)
+        {
+            Color text = e.Item.Selected || e.Item.Pressed
+                ? palette.MenuHighlightText.ToColor()
+                : palette.MenuForeground.ToColor();
+            TextRenderer.DrawText(
+                e.Graphics,
+                e.Text,
+                e.TextFont,
+                e.TextRectangle,
+                text,
+                TextFormatFlags.VerticalCenter | TextFormatFlags.Left | TextFormatFlags.EndEllipsis);
+        }
     }
 
     internal static class ThemeApplier
@@ -78,15 +141,30 @@ namespace AutoKeyLight
             }
         }
 
-        public static void ApplyMenu(ContextMenuStrip menu, ThemePalette palette)
+        public static void ApplyMenu(ToolStrip menu, ThemePalette palette)
         {
-            menu.Renderer = new ToolStripProfessionalRenderer(new PaletteColorTable(palette));
-            menu.BackColor = palette.MenuBackground.ToColor();
-            menu.ForeColor = palette.MenuForeground.ToColor();
-            foreach (ToolStripItem item in menu.Items)
+            PaletteMenuRenderer renderer = new PaletteMenuRenderer(palette);
+            menu.Renderer = renderer;
+            Color back = menu is ToolStripDropDown ? palette.MenuBackground.ToColor() : palette.Background.ToColor();
+            Color fore = palette.MenuForeground.ToColor();
+            menu.BackColor = back;
+            menu.ForeColor = fore;
+            PaintMenuItems(menu.Items, palette, renderer);
+        }
+
+        private static void PaintMenuItems(ToolStripItemCollection items, ThemePalette palette, PaletteMenuRenderer renderer)
+        {
+            foreach (ToolStripItem item in items)
             {
-                item.BackColor = palette.MenuBackground.ToColor();
+                item.BackColor = item.IsOnDropDown ? palette.MenuBackground.ToColor() : palette.Background.ToColor();
                 item.ForeColor = palette.MenuForeground.ToColor();
+                if (item is ToolStripDropDownItem dropDown)
+                {
+                    dropDown.DropDown.Renderer = renderer;
+                    dropDown.DropDown.BackColor = palette.MenuBackground.ToColor();
+                    dropDown.DropDown.ForeColor = palette.MenuForeground.ToColor();
+                    PaintMenuItems(dropDown.DropDownItems, palette, renderer);
+                }
             }
         }
 
@@ -98,13 +176,30 @@ namespace AutoKeyLight
         public static void ApplySystem(Control root, ContextMenuStrip menu)
         {
             ApplySystem(root);
+            ApplySystemMenu(menu);
+        }
+
+        public static void ApplySystemMenu(ContextMenuStrip menu)
+        {
             menu.Renderer = new ToolStripProfessionalRenderer();
             menu.BackColor = SystemColors.Control;
             menu.ForeColor = SystemColors.ControlText;
-            foreach (ToolStripItem item in menu.Items)
+            PaintSystemItems(menu.Items);
+        }
+
+        private static void PaintSystemItems(ToolStripItemCollection items)
+        {
+            foreach (ToolStripItem item in items)
             {
                 item.BackColor = SystemColors.Control;
                 item.ForeColor = SystemColors.ControlText;
+                if (item is ToolStripDropDownItem dropDown)
+                {
+                    dropDown.DropDown.Renderer = new ToolStripProfessionalRenderer();
+                    dropDown.DropDown.BackColor = SystemColors.Control;
+                    dropDown.DropDown.ForeColor = SystemColors.ControlText;
+                    PaintSystemItems(dropDown.DropDownItems);
+                }
             }
         }
 
@@ -118,10 +213,18 @@ namespace AutoKeyLight
                 button.ForeColor = palette.ButtonForeground.ToColor();
                 button.FlatAppearance.BorderColor = palette.Border.ToColor();
             }
-            else if (control is ListView or ComboBox or NumericUpDown or TextBox)
+            else if (control is ListView or ListBox or ComboBox or NumericUpDown or TextBox)
             {
                 control.BackColor = palette.InputBackground.ToColor();
                 control.ForeColor = palette.InputForeground.ToColor();
+            }
+            else if (control is LinkLabel link)
+            {
+                link.LinkColor = palette.Link.ToColor();
+                link.ActiveLinkColor = palette.Link.ToColor();
+                link.VisitedLinkColor = palette.Link.ToColor();
+                link.BackColor = palette.Background.ToColor();
+                link.ForeColor = palette.Link.ToColor();
             }
             else if (control is CheckBox check)
             {
@@ -147,7 +250,7 @@ namespace AutoKeyLight
 
         private static void ApplySystemControl(Control control)
         {
-            if (control is ListView or ComboBox or NumericUpDown or TextBox)
+            if (control is ListView or ListBox or ComboBox or NumericUpDown or TextBox)
             {
                 control.BackColor = SystemColors.Window;
                 control.ForeColor = SystemColors.WindowText;
