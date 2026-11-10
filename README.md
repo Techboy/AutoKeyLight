@@ -14,9 +14,9 @@ Most rooms light you badly for video. A window behind you leaves your face in sh
 
 You shouldn't have to remember to switch your lights on before every call and off again afterwards. AutoKeyLight runs in the Windows system tray and watches for any app using your webcam. When a call turns your camera on, it turns your lights on. When the camera goes off, it turns them off again after a short delay. You can still switch them on or off by hand from the tray at any time.
 
-## Get an Elgato light for less
+## Get cashback on an Elgato light
 
-Buying an Elgato light? Sign up through my [TopCashback referral link](https://www.topcashback.co.uk/ref/techboy) to get a discount on your purchase.
+Buying an Elgato light? Sign up through my [TopCashback referral link](https://www.topcashback.co.uk/ref/techboy) to get cashback on your purchase.
 
 ![AutoKeyLight main window](docs/autokeylight-window.png)
 
