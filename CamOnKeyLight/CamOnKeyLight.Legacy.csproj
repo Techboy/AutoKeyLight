@@ -8,9 +8,10 @@
     CamOnKeyLight publish.
   -->
   <PropertyGroup>
-    <BaseIntermediateOutputPath>$(MSBuildThisFileDirectory)obj\legacy\</BaseIntermediateOutputPath>
-    <MSBuildProjectExtensionsPath>$(BaseIntermediateOutputPath)</MSBuildProjectExtensionsPath>
-    <BaseOutputPath>$(MSBuildThisFileDirectory)bin\legacy\</BaseOutputPath>
+    <BaseIntermediateOutputPath>obj\legacy\</BaseIntermediateOutputPath>
+    <MSBuildProjectExtensionsPath>$(MSBuildThisFileDirectory)obj\legacy\</MSBuildProjectExtensionsPath>
+    <BaseOutputPath>bin\legacy\</BaseOutputPath>
+    <DefaultItemExcludes>$(DefaultItemExcludes);obj\**;bin\**</DefaultItemExcludes>
   </PropertyGroup>
 
   <Import Project="Sdk.props" Sdk="Microsoft.NET.Sdk" />
@@ -27,6 +28,7 @@
     <Version>0.7.0</Version>
     <AssemblyName>AutoKeyLight</AssemblyName>
     <Product>Cam On Key Light</Product>
+    <DefaultItemExcludes>$(DefaultItemExcludes);obj\**;bin\**</DefaultItemExcludes>
     <IncludeSourceRevisionInInformationalVersion>false</IncludeSourceRevisionInInformationalVersion>
     <SatelliteResourceLanguages>en</SatelliteResourceLanguages>
     <Authors>Gabriel Garcia</Authors>
