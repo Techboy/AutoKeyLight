@@ -1,0 +1,46 @@
+<Project>
+  <!--
+    v0.6.0 only accepts a package whose program is AutoKeyLight.exe.
+    This project publishes that host without passing AssemblyName as a global
+    property, which would rename every referenced project and make NuGet
+    restore fail with "Ambiguous project name 'AutoKeyLight'".
+    Intermediate files stay under obj/legacy so they do not collide with the
+    CamOnKeyLight publish.
+  -->
+  <PropertyGroup>
+    <BaseIntermediateOutputPath>obj\legacy\</BaseIntermediateOutputPath>
+    <MSBuildProjectExtensionsPath>$(MSBuildThisFileDirectory)obj\legacy\</MSBuildProjectExtensionsPath>
+    <BaseOutputPath>bin\legacy\</BaseOutputPath>
+    <DefaultItemExcludes>$(DefaultItemExcludes);obj\**;bin\**</DefaultItemExcludes>
+  </PropertyGroup>
+
+  <Import Project="Sdk.props" Sdk="Microsoft.NET.Sdk" />
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net8.0-windows7.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <UseWindowsForms>true</UseWindowsForms>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <StartupObject>CamOnKeyLight.Program</StartupObject>
+    <RootNamespace>CamOnKeyLight</RootNamespace>
+    <ApplicationIcon>Resources\Icon.ico</ApplicationIcon>
+    <Version>0.7.0</Version>
+    <AssemblyName>AutoKeyLight</AssemblyName>
+    <Product>Cam On Key Light</Product>
+    <DefaultItemExcludes>$(DefaultItemExcludes);obj\**;bin\**</DefaultItemExcludes>
+    <IncludeSourceRevisionInInformationalVersion>false</IncludeSourceRevisionInInformationalVersion>
+    <SatelliteResourceLanguages>en</SatelliteResourceLanguages>
+    <Authors>Gabriel Garcia</Authors>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\CamOnKeyLight.Core\CamOnKeyLight.Core.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Content Include="Resources\Icon.ico" />
+  </ItemGroup>
+
+  <Import Project="Sdk.targets" Sdk="Microsoft.NET.Sdk" />
+</Project>

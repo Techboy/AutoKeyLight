@@ -239,6 +239,19 @@ namespace CamOnKeyLight.Core.Tests
         }
 
         [Fact]
+        public void LegacyPublishedOutputMatchesPackageRules()
+        {
+            string? directory = Environment.GetEnvironmentVariable("AUTOKEYLIGHT_LEGACY_PUBLISH_DIR");
+            if (string.IsNullOrEmpty(directory))
+                return;
+
+            List<(string Path, long Length)> entries = Directory.EnumerateFiles(directory, "*", SearchOption.AllDirectories)
+                .Select(file => (Path.GetRelativePath(directory, file), new FileInfo(file).Length))
+                .ToList();
+            Assert.Null(LegacyPackageRules.Validate(entries));
+        }
+
+        [Fact]
         public void SavedDefaultsMatchTheDocumentedBehavior()
         {
             string? directory = AppContext.BaseDirectory;
